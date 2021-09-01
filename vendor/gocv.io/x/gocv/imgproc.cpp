@@ -1,33 +1,14 @@
 #include "imgproc.h"
 
-double ArcLength(Contour curve, bool is_closed) {
-    std::vector<cv::Point> pts;
-
-    for (size_t i = 0; i < curve.length; i++) {
-        pts.push_back(cv::Point(curve.points[i].x, curve.points[i].y));
-    }
-
-    return cv::arcLength(pts, is_closed);
+double ArcLength(PointVector curve, bool is_closed) {
+    return cv::arcLength(*curve, is_closed);
 }
 
-Contour ApproxPolyDP(Contour curve, double epsilon, bool closed) {
-    std::vector<cv::Point> curvePts;
+PointVector ApproxPolyDP(PointVector curve, double epsilon, bool closed) {
+    PointVector approxCurvePts = new std::vector<cv::Point>;
+    cv::approxPolyDP(*curve, *approxCurvePts, epsilon, closed);
 
-    for (size_t i = 0; i < curve.length; i++) {
-        curvePts.push_back(cv::Point(curve.points[i].x, curve.points[i].y));
-    }
-
-    std::vector<cv::Point> approxCurvePts;
-    cv::approxPolyDP(curvePts, approxCurvePts, epsilon, closed);
-
-    int length = approxCurvePts.size();
-    Point* points = new Point[length];
-
-    for (size_t i = 0; i < length; i++) {
-        points[i] = (Point){approxCurvePts[i].x, approxCurvePts[i].y};
-    }
-
-    return (Contour){points, length};
+    return approxCurvePts;
 }
 
 void CvtColor(Mat src, Mat dst, int code) {
@@ -95,46 +76,34 @@ double CompareHist(Mat hist1, Mat hist2, int method) {
     return cv::compareHist(*hist1, *hist2, method);
 }
 
-struct RotatedRect FitEllipse(Points points)
+struct RotatedRect FitEllipse(PointVector pts)
 {
-  Point *rpts = new Point[points.length];
-  std::vector<cv::Point> pts;
+    cv::RotatedRect bRect = cv::fitEllipse(*pts);
 
-  for (size_t i = 0; i < points.length; i++)
-  {
-    pts.push_back(cv::Point(points.points[i].x, points.points[i].y));
-    Point pt = {points.points[i].x, points.points[i].y};
-    rpts[i] = pt;
-  }
+    Rect r = {bRect.boundingRect().x, bRect.boundingRect().y, bRect.boundingRect().width, bRect.boundingRect().height};
+    Point centrpt = {int(lroundf(bRect.center.x)), int(lroundf(bRect.center.y))};
+    Size szsz = {int(lroundf(bRect.size.width)), int(lroundf(bRect.size.height))};
 
-  cv::RotatedRect bRect = cv::fitEllipse(pts);
-
-  Rect r = {bRect.boundingRect().x, bRect.boundingRect().y, bRect.boundingRect().width, bRect.boundingRect().height};
-  Point centrpt = {int(lroundf(bRect.center.x)), int(lroundf(bRect.center.y))};
-  Size szsz = {int(lroundf(bRect.size.width)), int(lroundf(bRect.size.height))};
-
-  RotatedRect rotRect = {(Contour){rpts, 4}, r, centrpt, szsz, bRect.angle};
-  return rotRect;
-}
-
-void ConvexHull(Contour points, Mat hull, bool clockwise, bool returnPoints) {
-    std::vector<cv::Point> pts;
-
-    for (size_t i = 0; i < points.length; i++) {
-        pts.push_back(cv::Point(points.points[i].x, points.points[i].y));
+    cv::Point2f* pts4 = new cv::Point2f[4];
+    bRect.points(pts4);
+    Point* rpts = new Point[4];
+    for (size_t j = 0; j < 4; j++) {
+        Point pt = {int(lroundf(pts4[j].x)), int(lroundf(pts4[j].y))};
+        rpts[j] = pt;
     }
 
-    cv::convexHull(pts, *hull, clockwise, returnPoints);
+    delete[] pts4;
+
+    RotatedRect rotRect = {Points{rpts, 4}, r, centrpt, szsz, bRect.angle};
+    return rotRect;
 }
 
-void ConvexityDefects(Contour points, Mat hull, Mat result) {
-    std::vector<cv::Point> pts;
+void ConvexHull(PointVector points, Mat hull, bool clockwise, bool returnPoints) {
+    cv::convexHull(*points, *hull, clockwise, returnPoints);
+}
 
-    for (size_t i = 0; i < points.length; i++) {
-        pts.push_back(cv::Point(points.points[i].x, points.points[i].y));
-    }
-
-    cv::convexityDefects(pts, *hull, *result);
+void ConvexityDefects(PointVector points, Mat hull, Mat result) {
+    cv::convexityDefects(*points, *hull, *result);
 }
 
 void BilateralFilter(Mat src, Mat dst, int d, double sc, double ss) {
@@ -160,12 +129,25 @@ void Dilate(Mat src, Mat dst, Mat kernel) {
     cv::dilate(*src, *dst, *kernel);
 }
 
+void DilateWithParams(Mat src, Mat dst, Mat kernel, Point anchor, int iterations, int borderType, Scalar borderValue) {
+    cv::Point pt1(anchor.x, anchor.y);
+    cv::Scalar c = cv::Scalar(borderValue.val1, borderValue.val2, borderValue.val3, borderValue.val4);
+
+    cv::dilate(*src, *dst, *kernel, pt1, iterations, borderType, c);
+}
+
 void DistanceTransform(Mat src, Mat dst, Mat labels, int distanceType, int maskSize, int labelType) {
     cv::distanceTransform(*src, *dst, *labels, distanceType, maskSize, labelType);
 }
 
 void Erode(Mat src, Mat dst, Mat kernel) {
     cv::erode(*src, *dst, *kernel);
+}
+
+void ErodeWithParams(Mat src, Mat dst, Mat kernel, Point anchor, int iterations, int borderType) {
+    cv::Point pt1(anchor.x, anchor.y);
+
+    cv::erode(*src, *dst, *kernel, pt1, iterations, borderType, cv::morphologyDefaultBorderValue());
 }
 
 void MatchTemplate(Mat image, Mat templ, Mat result, int method, Mat mask) {
@@ -191,14 +173,8 @@ void PyrUp(Mat src, Mat dst, Size size, int borderType) {
     cv::pyrUp(*src, *dst, cvSize, borderType);
 }
 
-struct Rect BoundingRect(Contour con) {
-    std::vector<cv::Point> pts;
-
-    for (size_t i = 0; i < con.length; i++) {
-        pts.push_back(cv::Point(con.points[i].x, con.points[i].y));
-    }
-
-    cv::Rect bRect = cv::boundingRect(pts);
+struct Rect BoundingRect(PointVector pts) {
+    cv::Rect bRect = cv::boundingRect(*pts);
     Rect r = {bRect.x, bRect.y, bRect.width, bRect.height};
     return r;
 }
@@ -207,27 +183,15 @@ void BoxPoints(RotatedRect rect, Mat boxPts){
     cv::Point2f centerPt(rect.center.x , rect.center.y);
     cv::Size2f rSize(rect.size.width, rect.size.height);
     cv::RotatedRect rotatedRectangle(centerPt, rSize, rect.angle);
-     cv::boxPoints(rotatedRectangle, *boxPts);
+    cv::boxPoints(rotatedRectangle, *boxPts);
 }
 
-double ContourArea(Contour con) {
-    std::vector<cv::Point> pts;
-
-    for (size_t i = 0; i < con.length; i++) {
-        pts.push_back(cv::Point(con.points[i].x, con.points[i].y));
-    }
-
-    return cv::contourArea(pts);
+double ContourArea(PointVector pts) {
+    return cv::contourArea(*pts);
 }
 
-struct RotatedRect MinAreaRect(Points points){
-    std::vector<cv::Point> pts;
-
-    for (size_t i = 0; i < points.length; i++) {
-        pts.push_back(cv::Point(points.points[i].x, points.points[i].y));
-    }
-
-    cv::RotatedRect cvrect = cv::minAreaRect(pts);
+struct RotatedRect MinAreaRect(PointVector pts){
+    cv::RotatedRect cvrect = cv::minAreaRect(*pts);
 
     Point* rpts = new Point[4];
     cv::Point2f* pts4 = new cv::Point2f[4];
@@ -249,38 +213,24 @@ struct RotatedRect MinAreaRect(Points points){
     return retrect;
 }
 
-void MinEnclosingCircle(Points points, Point2f* center, float* radius){
-    std::vector<cv::Point> pts;
-
-    for (size_t i = 0; i < points.length; i++) {
-        pts.push_back(cv::Point(points.points[i].x, points.points[i].y));
-    }
-
+void MinEnclosingCircle(PointVector pts, Point2f* center, float* radius){
     cv::Point2f center2f;
-    cv::minEnclosingCircle(pts, center2f, *radius);
+    cv::minEnclosingCircle(*pts, center2f, *radius);
     center->x = center2f.x;
     center->y = center2f.y;
 }
 
-struct Contours FindContours(Mat src, int mode, int method) {
-    std::vector<std::vector<cv::Point> > contours;
-    cv::findContours(*src, contours, mode, method);
+PointsVector FindContours(Mat src, Mat hierarchy, int mode, int method) {
+    PointsVector contours = new std::vector<std::vector<cv::Point> >;
+    cv::findContours(*src, *contours, *hierarchy, mode, method);
 
-    Contour* points = new Contour[contours.size()];
+    return contours;
+}
 
-    for (size_t i = 0; i < contours.size(); i++) {
-        Point* pts = new Point[contours[i].size()];
+double PointPolygonTest(PointVector pts, Point pt, bool measureDist) {
+	cv::Point2f pt1(pt.x, pt.y);
 
-        for (size_t j = 0; j < contours[i].size(); j++) {
-            Point pt = {contours[i][j].x, contours[i][j].y};
-            pts[j] = pt;
-        }
-
-        points[i] = (Contour){pts, (int)contours[i].size()};
-    }
-
-    Contours cons = {points, (int)contours.size()};
-    return cons;
+  return cv::pointPolygonTest(*pts, pt1, measureDist);
 }
 
 int ConnectedComponents(Mat src, Mat labels, int connectivity, int ltype, int ccltype){
@@ -315,6 +265,10 @@ void MorphologyExWithParams(Mat src, Mat dst, int op, Mat kernel, Point pt, int 
 void GaussianBlur(Mat src, Mat dst, Size ps, double sX, double sY, int bt) {
     cv::Size sz(ps.width, ps.height);
     cv::GaussianBlur(*src, *dst, sz, sX, sY, bt);
+}
+
+Mat GetGaussianKernel(int ksize, double sigma, int ktype){
+    return new cv::Mat(cv::getGaussianKernel(ksize, sigma, ktype));
 }
 
 void Laplacian(Mat src, Mat dst, int dDepth, int kSize, double scale, double delta,
@@ -382,8 +336,8 @@ void Integral(Mat src, Mat sum, Mat sqsum, Mat tilted) {
     cv::integral(*src, *sum, *sqsum, *tilted);
 }
 
-void Threshold(Mat src, Mat dst, double thresh, double maxvalue, int typ) {
-    cv::threshold(*src, *dst, thresh, maxvalue, typ);
+double Threshold(Mat src, Mat dst, double thresh, double maxvalue, int typ) {
+    return cv::threshold(*src, *dst, thresh, maxvalue, typ);
 }
 
 void AdaptiveThreshold(Mat src, Mat dst, double maxValue, int adaptiveMethod, int thresholdType,
@@ -414,6 +368,13 @@ void Circle(Mat img, Point center, int radius, Scalar color, int thickness) {
     cv::circle(*img, p1, radius, c, thickness);
 }
 
+void CircleWithParams(Mat img, Point center, int radius, Scalar color, int thickness, int lineType, int shift) {
+    cv::Point p1(center.x, center.y);
+    cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
+
+    cv::circle(*img, p1, radius, c, thickness, lineType, shift);
+}
+
 void Ellipse(Mat img, Point center, Point axes, double angle, double
              startAngle, double endAngle, Scalar color, int thickness) {
     cv::Point p1(center.x, center.y);
@@ -421,6 +382,15 @@ void Ellipse(Mat img, Point center, Point axes, double angle, double
     cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
 
     cv::ellipse(*img, p1, p2, angle, startAngle, endAngle, c, thickness);
+}
+
+void EllipseWithParams(Mat img, Point center, Point axes, double angle, double
+             startAngle, double endAngle, Scalar color, int thickness, int lineType, int shift) {
+    cv::Point p1(center.x, center.y);
+    cv::Point p2(axes.x, axes.y);
+    cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
+
+    cv::ellipse(*img, p1, p2, angle, startAngle, endAngle, c, thickness, lineType, shift);
 }
 
 void Line(Mat img, Point pt1, Point pt2, Scalar color, int thickness) {
@@ -443,28 +413,43 @@ void Rectangle(Mat img, Rect r, Scalar color, int thickness) {
     );
 }
 
-void FillPoly(Mat img, Contours points, Scalar color) {
-    std::vector<std::vector<cv::Point> > pts;
+void RectangleWithParams(Mat img, Rect r, Scalar color, int thickness, int lineType, int shift) {
+    cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
+    cv::rectangle(
+        *img,
+        cv::Point(r.x, r.y),
+        cv::Point(r.x + r.width, r.y + r.height),
+        c,
+        thickness,
+        lineType,
+        shift
+    );
+}
 
-    for (size_t i = 0; i < points.length; i++) {
-        Contour contour = points.contours[i];
-
-        std::vector<cv::Point> cntr;
-
-        for (size_t i = 0; i < contour.length; i++) {
-            cntr.push_back(cv::Point(contour.points[i].x, contour.points[i].y));
-        }
-
-        pts.push_back(cntr);
-    }
-
+void FillPoly(Mat img, PointsVector pts, Scalar color) {
     cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
 
-    cv::fillPoly(*img, pts, c);
+    cv::fillPoly(*img, *pts, c);
+}
+
+void FillPolyWithParams(Mat img, PointsVector pts, Scalar color, int lineType, int shift, Point offset) {
+    cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
+
+    cv::fillPoly(*img, *pts, c, lineType, shift, cv::Point(offset.x, offset.y));
+}
+
+void Polylines(Mat img, PointsVector pts, bool isClosed, Scalar color,int thickness) {
+    cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
+
+    cv::polylines(*img, *pts, isClosed, c, thickness);
 }
 
 struct Size GetTextSize(const char* text, int fontFace, double fontScale, int thickness) {
-    cv::Size sz = cv::getTextSize(text, fontFace, fontScale, thickness, NULL);
+    return GetTextSizeWithBaseline(text, fontFace, fontScale, thickness, NULL);
+}
+
+struct Size GetTextSizeWithBaseline(const char* text, int fontFace, double fontScale, int thickness, int* baesline) {
+    cv::Size sz = cv::getTextSize(text, fontFace, fontScale, thickness, baesline);
     Size size = {sz.width, sz.height};
     return size;
 }
@@ -528,39 +513,41 @@ void ApplyCustomColorMap(Mat src, Mat dst, Mat colormap) {
     cv::applyColorMap(*src, *dst, *colormap);
 }
 
-Mat GetPerspectiveTransform(Contour src, Contour dst) {
+Mat GetPerspectiveTransform(PointVector src, PointVector dst) {
     std::vector<cv::Point2f> src_pts;
-
-    for (size_t i = 0; i < src.length; i++) {
-        src_pts.push_back(cv::Point2f(src.points[i].x, src.points[i].y));
-    }
+    copyPointVectorToPoint2fVector(src, &src_pts);
 
     std::vector<cv::Point2f> dst_pts;
-
-    for (size_t i = 0; i < dst.length; i++) {
-        dst_pts.push_back(cv::Point2f(dst.points[i].x, dst.points[i].y));
-    }
+    copyPointVectorToPoint2fVector(dst, &dst_pts);
 
     return new cv::Mat(cv::getPerspectiveTransform(src_pts, dst_pts));
 }
 
-void DrawContours(Mat src, Contours contours, int contourIdx, Scalar color, int thickness) {
-    std::vector<std::vector<cv::Point> > cntrs;
+Mat GetPerspectiveTransform2f(Point2fVector src, Point2fVector dst) {
+    return new cv::Mat(cv::getPerspectiveTransform(*src, *dst));
+}
 
-    for (size_t i = 0; i < contours.length; i++) {
-        Contour contour = contours.contours[i];
+Mat GetAffineTransform(PointVector src, PointVector dst) {
+    std::vector<cv::Point2f> src_pts;
+    copyPointVectorToPoint2fVector(src, &src_pts);
 
-        std::vector<cv::Point> cntr;
+    std::vector<cv::Point2f> dst_pts;
+    copyPointVectorToPoint2fVector(dst, &dst_pts);
 
-        for (size_t i = 0; i < contour.length; i++) {
-            cntr.push_back(cv::Point(contour.points[i].x, contour.points[i].y));
-        }
+    return new cv::Mat(cv::getAffineTransform(src_pts, dst_pts));
+}
 
-        cntrs.push_back(cntr);
-    }
+Mat GetAffineTransform2f(Point2fVector src, Point2fVector dst) {
+    return new cv::Mat(cv::getAffineTransform(*src, *dst));
+}
 
+Mat FindHomography(Mat src, Mat dst, int method, double ransacReprojThreshold, Mat mask, const int maxIters, const double confidence) {
+    return new cv::Mat(cv::findHomography(*src, *dst, method, ransacReprojThreshold, *mask, maxIters, confidence));
+}
+
+void DrawContours(Mat src, PointsVector contours, int contourIdx, Scalar color, int thickness) {
     cv::Scalar c = cv::Scalar(color.val1, color.val2, color.val3, color.val4);
-    cv::drawContours(*src, cntrs, contourIdx, c, thickness);
+    cv::drawContours(*src, *contours, contourIdx, c, thickness);
 }
 
 void Sobel(Mat src, Mat dst, int ddepth, int dx, int dy, int ksize, double scale, double delta, int borderType) {
@@ -592,12 +579,8 @@ void LogPolar(Mat src, Mat dst, Point center, double m, int flags) {
 	cv::logPolar(*src, *dst, centerPt, m, flags);
 }
 
-void FitLine(Contour points, Mat line, int distType, double param, double reps, double aeps) {
-	std::vector<cv::Point> pts;
-	for (size_t i = 0; i < points.length; i++) {
-		pts.push_back(cv::Point(points.points[i].x, points.points[i].y));
-	}
-	cv::fitLine(pts, *line, distType, param, reps, aeps);
+void FitLine(PointVector pts, Mat line, int distType, double param, double reps, double aeps) {
+	cv::fitLine(*pts, *line, distType, param, reps, aeps);
 }
 
 void LinearPolar(Mat src, Mat dst, Point center, double maxRadius, int flags) {
@@ -624,4 +607,45 @@ void CLAHE_Apply(CLAHE c, Mat src, Mat dst) {
 
 void InvertAffineTransform(Mat src, Mat dst) {
 	cv::invertAffineTransform(*src, *dst);
+}
+
+Point2f PhaseCorrelate(Mat src1, Mat src2, Mat window, double* response) {
+    cv::Point2d result = cv::phaseCorrelate(*src1, *src2, *window, response);
+
+    Point2f result2f = {
+        .x = float(result.x),
+        .y = float(result.y),
+    };
+    return result2f;
+}
+
+void Mat_Accumulate(Mat src, Mat dst) {
+    cv::accumulate(*src, *dst);
+}
+void Mat_AccumulateWithMask(Mat src, Mat dst, Mat mask) {
+    cv::accumulate(*src, *dst, *mask);
+}
+
+void Mat_AccumulateSquare(Mat src, Mat dst) {
+    cv::accumulateSquare(*src, *dst);
+}
+
+void Mat_AccumulateSquareWithMask(Mat src, Mat dst, Mat mask) {
+    cv::accumulateSquare(*src, *dst, *mask);
+}
+
+void Mat_AccumulateProduct(Mat src1, Mat src2, Mat dst) {
+    cv::accumulateProduct(*src1, *src2, *dst);
+}
+
+void Mat_AccumulateProductWithMask(Mat src1, Mat src2, Mat dst, Mat mask) {
+    cv::accumulateProduct(*src1, *src2, *dst, *mask);
+}
+
+void Mat_AccumulatedWeighted(Mat src, Mat dst, double alpha) {
+    cv::accumulateWeighted(*src, *dst, alpha);
+}
+
+void Mat_AccumulatedWeightedWithMask(Mat src, Mat dst, double alpha, Mat mask) {
+    cv::accumulateWeighted(*src, *dst, alpha, *mask);
 }

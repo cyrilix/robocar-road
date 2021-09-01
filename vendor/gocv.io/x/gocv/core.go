@@ -35,25 +35,25 @@ const (
 	MatTypeCV8U MatType = 0
 
 	// MatTypeCV8S is a Mat of 8-bit signed int
-	MatTypeCV8S = 1
+	MatTypeCV8S MatType = 1
 
 	// MatTypeCV16U is a Mat of 16-bit unsigned int
-	MatTypeCV16U = 2
+	MatTypeCV16U MatType = 2
 
 	// MatTypeCV16S is a Mat of 16-bit signed int
-	MatTypeCV16S = 3
+	MatTypeCV16S MatType = 3
 
 	// MatTypeCV16SC2 is a Mat of 16-bit signed int with 2 channels
 	MatTypeCV16SC2 = MatTypeCV16S + MatChannels2
 
 	// MatTypeCV32S is a Mat of 32-bit signed int
-	MatTypeCV32S = 4
+	MatTypeCV32S MatType = 4
 
 	// MatTypeCV32F is a Mat of 32-bit float
-	MatTypeCV32F = 5
+	MatTypeCV32F MatType = 5
 
 	// MatTypeCV64F is a Mat of 64-bit float
-	MatTypeCV64F = 6
+	MatTypeCV64F MatType = 6
 
 	// MatTypeCV8UC1 is a Mat of 8-bit unsigned int with a single channel
 	MatTypeCV8UC1 = MatTypeCV8U + MatChannels1
@@ -146,20 +146,25 @@ const (
 	CompareEQ CompareType = 0
 
 	// CompareGT src1 is greater than src2.
-	CompareGT = 1
+	CompareGT CompareType = 1
 
 	// CompareGE src1 is greater than or equal to src2.
-	CompareGE = 2
+	CompareGE CompareType = 2
 
 	// CompareLT src1 is less than src2.
-	CompareLT = 3
+	CompareLT CompareType = 3
 
 	// CompareLE src1 is less than or equal to src2.
-	CompareLE = 4
+	CompareLE CompareType = 4
 
 	// CompareNE src1 is unequal to src2.
-	CompareNE = 5
+	CompareNE CompareType = 5
 )
+
+type Point2f struct {
+	X float32
+	Y float32
+}
 
 var ErrEmptyByteSlice = errors.New("empty byte array")
 
@@ -173,6 +178,9 @@ var ErrEmptyByteSlice = errors.New("empty byte array")
 //
 type Mat struct {
 	p C.Mat
+
+	// Non-nil if Mat was created with a []byte (using NewMatFromBytes()). Nil otherwise.
+	d []byte
 }
 
 // NewMat returns a new empty Mat.
@@ -183,6 +191,58 @@ func NewMat() Mat {
 // NewMatWithSize returns a new Mat with a specific size and type.
 func NewMatWithSize(rows int, cols int, mt MatType) Mat {
 	return newMat(C.Mat_NewWithSize(C.int(rows), C.int(cols), C.int(mt)))
+}
+
+// NewMatWithSizes returns a new multidimensional Mat with a specific size and type.
+func NewMatWithSizes(sizes []int, mt MatType) Mat {
+	sizesArray := make([]C.int, len(sizes))
+	for i, s := range sizes {
+		sizesArray[i] = C.int(s)
+	}
+
+	sizesIntVector := C.IntVector{
+		val:    (*C.int)(&sizesArray[0]),
+		length: C.int(len(sizes)),
+	}
+	return newMat(C.Mat_NewWithSizes(sizesIntVector, C.int(mt)))
+}
+
+// NewMatWithSizesWithScalar returns a new multidimensional Mat with a specific size, type and scalar value.
+func NewMatWithSizesWithScalar(sizes []int, mt MatType, s Scalar) Mat {
+	csizes := []C.int{}
+	for _, v := range sizes {
+		csizes = append(csizes, C.int(v))
+	}
+	sizesVector := C.struct_IntVector{}
+	sizesVector.val = (*C.int)(&csizes[0])
+	sizesVector.length = (C.int)(len(csizes))
+
+	sVal := C.struct_Scalar{
+		val1: C.double(s.Val1),
+		val2: C.double(s.Val2),
+		val3: C.double(s.Val3),
+		val4: C.double(s.Val4),
+	}
+
+	return newMat(C.Mat_NewWithSizesFromScalar(sizesVector, C.int(mt), sVal))
+}
+
+// NewMatWithSizesWithScalar returns a new multidimensional Mat with a specific size, type and preexisting data.
+func NewMatWithSizesFromBytes(sizes []int, mt MatType, data []byte) (Mat, error) {
+	cBytes, err := toByteArray(data)
+	if err != nil {
+		return Mat{}, err
+	}
+
+	csizes := []C.int{}
+	for _, v := range sizes {
+		csizes = append(csizes, C.int(v))
+	}
+	sizesVector := C.struct_IntVector{}
+	sizesVector.val = (*C.int)(&csizes[0])
+	sizesVector.length = (C.int)(len(csizes))
+
+	return newMat(C.Mat_NewWithSizesFromBytes(sizesVector, C.int(mt), *cBytes)), nil
 }
 
 // NewMatFromScalar returns a new Mat for a specific Scalar value
@@ -216,7 +276,44 @@ func NewMatFromBytes(rows int, cols int, mt MatType, data []byte) (Mat, error) {
 	if err != nil {
 		return Mat{}, err
 	}
-	return newMat(C.Mat_NewFromBytes(C.int(rows), C.int(cols), C.int(mt), *cBytes)), nil
+	mat := newMat(C.Mat_NewFromBytes(C.int(rows), C.int(cols), C.int(mt), *cBytes))
+
+	// Store a reference to the backing data slice. This is needed because we pass the backing
+	// array directly to C code and without keeping a Go reference to it, it might end up
+	// garbage collected which would result in crashes.
+	//
+	// TODO(bga): This could live in newMat() but I wanted to reduce the change surface.
+	// TODO(bga): Code that needs access to the array from Go could use this directly.
+	mat.d = data
+
+	return mat, nil
+}
+
+// Returns an identity matrix of the specified size and type.
+//
+// The method returns a Matlab-style identity matrix initializer, similarly to Mat::zeros. Similarly to Mat::ones.
+// For further details, please see:
+// https://docs.opencv.org/master/d3/d63/classcv_1_1Mat.html#a2cf9b9acde7a9852542bbc20ef851ed2
+func Eye(rows int, cols int, mt MatType) Mat {
+	return newMat(C.Eye(C.int(rows), C.int(cols), C.int(mt)))
+}
+
+// Returns a zero array of the specified size and type.
+//
+// The method returns a Matlab-style zero array initializer.
+// For further details, please see:
+// https://docs.opencv.org/master/d3/d63/classcv_1_1Mat.html#a0b57b6a326c8876d944d188a46e0f556
+func Zeros(rows int, cols int, mt MatType) Mat {
+	return newMat(C.Zeros(C.int(rows), C.int(cols), C.int(mt)))
+}
+
+// Returns an array of all 1's of the specified size and type.
+//
+// The method returns a Matlab-style 1's array initializer
+// For further details, please see:
+// https://docs.opencv.org/master/d3/d63/classcv_1_1Mat.html#a69ae0402d116fc9c71908d8508dc2f09
+func Ones(rows int, cols int, mt MatType) Mat {
+	return newMat(C.Ones(C.int(rows), C.int(cols), C.int(mt)))
 }
 
 // FromPtr returns a new Mat with a specific size and type, initialized from a Mat Ptr.
@@ -233,6 +330,15 @@ func (m *Mat) Ptr() C.Mat {
 func (m *Mat) Empty() bool {
 	isEmpty := C.Mat_Empty(m.p)
 	return isEmpty != 0
+}
+
+// IsContinuous determines if the Mat is continuous.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d3/d63/classcv_1_1Mat.html#aa90cea495029c7d1ee0a41361ccecdf3
+//
+func (m *Mat) IsContinuous() bool {
+	return bool(C.Mat_IsContinuous(m.p))
 }
 
 // Clone returns a cloned full copy of the Mat.
@@ -270,6 +376,11 @@ func (m *Mat) ConvertTo(dst *Mat, mt MatType) {
 	return
 }
 
+func (m *Mat) ConvertToWithParams(dst *Mat, mt MatType, alpha, beta float32) {
+	C.Mat_ConvertToWithParams(m.p, dst.p, C.int(mt), C.float(alpha), C.float(beta))
+	return
+}
+
 // Total returns the total number of array elements.
 //
 // For further details, please see:
@@ -287,6 +398,7 @@ func (m *Mat) Total() int {
 func (m *Mat) Size() (dims []int) {
 	cdims := C.IntVector{}
 	C.Mat_Size(m.p, &cdims)
+	defer C.IntVector_Close(cdims)
 
 	h := &reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(cdims.val)),
@@ -314,28 +426,40 @@ func (m *Mat) ToBytes() []byte {
 //
 // The data is no longer valid once the Mat has been closed. Any data that
 // needs to be accessed after the Mat is closed must be copied into Go memory.
-func (m *Mat) DataPtrUint8() []uint8 {
+func (m *Mat) DataPtrUint8() ([]uint8, error) {
+	if !m.IsContinuous() {
+		return nil, errors.New("DataPtrUint8 requires continuous Mat")
+	}
+
 	p := C.Mat_DataPtr(m.p)
 	h := &reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(p.data)),
 		Len:  int(p.length),
 		Cap:  int(p.length),
 	}
-	return *(*[]uint8)(unsafe.Pointer(h))
+	return *(*[]uint8)(unsafe.Pointer(h)), nil
 }
 
 // DataPtrInt8 returns a slice that references the OpenCV allocated data.
 //
 // The data is no longer valid once the Mat has been closed. Any data that
 // needs to be accessed after the Mat is closed must be copied into Go memory.
-func (m *Mat) DataPtrInt8() []int8 {
+func (m *Mat) DataPtrInt8() ([]int8, error) {
+	if m.Type()&MatTypeCV8S != MatTypeCV8S {
+		return nil, errors.New("DataPtrInt8 only supports MatTypeCV8S")
+	}
+
+	if !m.IsContinuous() {
+		return nil, errors.New("DataPtrInt8 requires continuous Mat")
+	}
+
 	p := C.Mat_DataPtr(m.p)
 	h := &reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(p.data)),
 		Len:  int(p.length),
 		Cap:  int(p.length),
 	}
-	return *(*[]int8)(unsafe.Pointer(h))
+	return *(*[]int8)(unsafe.Pointer(h)), nil
 }
 
 // DataPtrUint16 returns a slice that references the OpenCV allocated data.
@@ -345,6 +469,10 @@ func (m *Mat) DataPtrInt8() []int8 {
 func (m *Mat) DataPtrUint16() ([]uint16, error) {
 	if m.Type()&MatTypeCV16U != MatTypeCV16U {
 		return nil, errors.New("DataPtrUint16 only supports MatTypeCV16U")
+	}
+
+	if !m.IsContinuous() {
+		return nil, errors.New("DataPtrUint16 requires continuous Mat")
 	}
 
 	p := C.Mat_DataPtr(m.p)
@@ -365,6 +493,10 @@ func (m *Mat) DataPtrInt16() ([]int16, error) {
 		return nil, errors.New("DataPtrInt16 only supports MatTypeCV16S")
 	}
 
+	if !m.IsContinuous() {
+		return nil, errors.New("DataPtrInt16 requires continuous Mat")
+	}
+
 	p := C.Mat_DataPtr(m.p)
 	h := &reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(p.data)),
@@ -383,6 +515,10 @@ func (m *Mat) DataPtrFloat32() ([]float32, error) {
 		return nil, errors.New("DataPtrFloat32 only supports MatTypeCV32F")
 	}
 
+	if !m.IsContinuous() {
+		return nil, errors.New("DataPtrFloat32 requires continuous Mat")
+	}
+
 	p := C.Mat_DataPtr(m.p)
 	h := &reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(p.data)),
@@ -399,6 +535,10 @@ func (m *Mat) DataPtrFloat32() ([]float32, error) {
 func (m *Mat) DataPtrFloat64() ([]float64, error) {
 	if m.Type()&MatTypeCV64F != MatTypeCV64F {
 		return nil, errors.New("DataPtrFloat64 only supports MatTypeCV64F")
+	}
+
+	if !m.IsContinuous() {
+		return nil, errors.New("DataPtrFloat64 requires continuous Mat")
 	}
 
 	p := C.Mat_DataPtr(m.p)
@@ -739,106 +879,6 @@ func (m *Mat) T() Mat {
 	return newMat(C.Mat_T(m.p))
 }
 
-// ToImage converts a Mat to a image.Image.
-func (m *Mat) ToImage() (image.Image, error) {
-	t := m.Type()
-	if t != MatTypeCV8UC1 && t != MatTypeCV8UC3 && t != MatTypeCV8UC4 {
-		return nil, errors.New("ToImage supports only MatType CV8UC1, CV8UC3 and CV8UC4")
-	}
-
-	width := m.Cols()
-	height := m.Rows()
-	step := m.Step()
-	data := m.ToBytes()
-	channels := m.Channels()
-
-	if t == MatTypeCV8UC1 {
-		img := image.NewGray(image.Rect(0, 0, width, height))
-		c := color.Gray{Y: uint8(0)}
-
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				c.Y = uint8(data[y*step+x])
-				img.SetGray(x, y, c)
-			}
-		}
-
-		return img, nil
-	}
-
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	c := color.RGBA{
-		R: uint8(0),
-		G: uint8(0),
-		B: uint8(0),
-		A: uint8(255),
-	}
-
-	for y := 0; y < height; y++ {
-		for x := 0; x < step; x = x + channels {
-			c.B = uint8(data[y*step+x])
-			c.G = uint8(data[y*step+x+1])
-			c.R = uint8(data[y*step+x+2])
-			if channels == 4 {
-				c.A = uint8(data[y*step+x+3])
-			}
-			img.SetRGBA(int(x/channels), y, c)
-		}
-	}
-
-	return img, nil
-}
-
-//ImageToMatRGBA converts image.Image to gocv.Mat,
-//which represents RGBA image having 8bit for each component.
-//Type of Mat is gocv.MatTypeCV8UC4.
-func ImageToMatRGBA(img image.Image) (Mat, error) {
-	bounds := img.Bounds()
-	x := bounds.Dx()
-	y := bounds.Dy()
-	data := make([]byte, 0, x*y*4)
-	for j := bounds.Min.Y; j < bounds.Max.Y; j++ {
-		for i := bounds.Min.X; i < bounds.Max.X; i++ {
-			r, g, b, a := img.At(i, j).RGBA()
-			data = append(data, byte(b>>8), byte(g>>8), byte(r>>8), byte(a>>8))
-		}
-	}
-	return NewMatFromBytes(y, x, MatTypeCV8UC4, data)
-}
-
-//ImageToMatRGB converts image.Image to gocv.Mat,
-//which represents RGB image having 8bit for each component.
-//Type of Mat is gocv.MatTypeCV8UC3.
-func ImageToMatRGB(img image.Image) (Mat, error) {
-	bounds := img.Bounds()
-	x := bounds.Dx()
-	y := bounds.Dy()
-	data := make([]byte, 0, x*y*3)
-	for j := bounds.Min.Y; j < bounds.Max.Y; j++ {
-		for i := bounds.Min.X; i < bounds.Max.X; i++ {
-			r, g, b, _ := img.At(i, j).RGBA()
-			data = append(data, byte(b>>8), byte(g>>8), byte(r>>8))
-		}
-	}
-	return NewMatFromBytes(y, x, MatTypeCV8UC3, data)
-}
-
-//ImageGrayToMatGray converts image.Gray to gocv.Mat,
-//which represents grayscale image 8bit.
-//Type of Mat is gocv.MatTypeCV8UC1.
-func ImageGrayToMatGray(img *image.Gray) (Mat, error) {
-	bounds := img.Bounds()
-	x := bounds.Dx()
-	y := bounds.Dy()
-	data := make([]byte, 0, x*y)
-	for j := bounds.Min.Y; j < bounds.Max.Y; j++ {
-		for i := bounds.Min.X; i < bounds.Max.X; i++ {
-			data = append(data, img.GrayAt(i, j).Y)
-		}
-	}
-	return NewMatFromBytes(y, x, MatTypeCV8UC1, data)
-}
-
 // AbsDiff calculates the per-element absolute difference between two arrays
 // or between an array and a scalar.
 //
@@ -953,7 +993,7 @@ func BitwiseXorWithMask(src1 Mat, src2 Mat, dst *Mat, mask Mat) {
 // For further details, please see:
 // https://docs.opencv.org/master/d2/de8/group__core__array.html#ga4ba778a1c57f83233b1d851c83f5a622
 //
-func BatchDistance(src1 Mat, src2 Mat, dist Mat, dtype int, nidx Mat, normType int, K int, mask Mat, update int, crosscheck bool) {
+func BatchDistance(src1 Mat, src2 Mat, dist Mat, dtype MatType, nidx Mat, normType NormType, K int, mask Mat, update int, crosscheck bool) {
 	C.Mat_BatchDistance(src1.p, src2.p, dist.p, C.int(dtype), nidx.p, C.int(normType), C.int(K), mask.p, C.int(update), C.bool(crosscheck))
 }
 
@@ -979,19 +1019,19 @@ const (
 	CovarScrambled CovarFlags = 0
 
 	// CovarNormal indicates to use normal covariation.
-	CovarNormal = 1
+	CovarNormal CovarFlags = 1
 
 	// CovarUseAvg indicates to use average covariation.
-	CovarUseAvg = 2
+	CovarUseAvg CovarFlags = 2
 
 	// CovarScale indicates to use scaled covariation.
-	CovarScale = 4
+	CovarScale CovarFlags = 4
 
 	// CovarRows indicates to use covariation on rows.
-	CovarRows = 8
+	CovarRows CovarFlags = 8
 
 	// CovarCols indicates to use covariation on columns.
-	CovarCols = 16
+	CovarCols CovarFlags = 16
 )
 
 // CalcCovarMatrix calculates the covariance matrix of a set of vectors.
@@ -999,7 +1039,7 @@ const (
 // For further details, please see:
 // https://docs.opencv.org/master/d2/de8/group__core__array.html#ga017122d912af19d7d0d2cccc2d63819f
 //
-func CalcCovarMatrix(samples Mat, covar *Mat, mean *Mat, flags CovarFlags, ctype int) {
+func CalcCovarMatrix(samples Mat, covar *Mat, mean *Mat, flags CovarFlags, ctype MatType) {
 	C.Mat_CalcCovarMatrix(samples.p, covar.p, mean.p, C.int(flags), C.int(ctype))
 }
 
@@ -1087,24 +1127,24 @@ const (
 	DftForward DftFlags = 0
 
 	// DftInverse performs an inverse 1D or 2D transform.
-	DftInverse = 1
+	DftInverse DftFlags = 1
 
 	// DftScale scales the result: divide it by the number of array elements. Normally, it is combined with DFT_INVERSE.
-	DftScale = 2
+	DftScale DftFlags = 2
 
 	// DftRows performs a forward or inverse transform of every individual row of the input matrix.
-	DftRows = 4
+	DftRows DftFlags = 4
 
 	// DftComplexOutput performs a forward transformation of 1D or 2D real array; the result, though being a complex array, has complex-conjugate symmetry
-	DftComplexOutput = 16
+	DftComplexOutput DftFlags = 16
 
 	// DftRealOutput performs an inverse transformation of a 1D or 2D complex array; the result is normally a complex array of the same size,
 	// however, if the input array has conjugate-complex symmetry (for example, it is a result of forward transformation with DFT_COMPLEX_OUTPUT flag),
 	// the output is a real array.
-	DftRealOutput = 32
+	DftRealOutput DftFlags = 32
 
 	// DftComplexInput specifies that input is complex input. If this flag is set, the input must have 2 channels.
-	DftComplexInput = 64
+	DftComplexInput DftFlags = 64
 
 	// DctInverse performs an inverse 1D or 2D dct transform.
 	DctInverse = DftInverse
@@ -1254,9 +1294,9 @@ const (
 	// Rotate90Clockwise allows to rotate image 90 degrees clockwise
 	Rotate90Clockwise RotateFlag = 0
 	// Rotate180Clockwise allows to rotate image 180 degrees clockwise
-	Rotate180Clockwise = 1
+	Rotate180Clockwise RotateFlag = 1
 	// Rotate90CounterClockwise allows to rotate 270 degrees clockwise
-	Rotate90CounterClockwise = 2
+	Rotate90CounterClockwise RotateFlag = 2
 )
 
 // Rotate rotates a 2D array in multiples of 90 degrees
@@ -1332,7 +1372,7 @@ func InsertChannel(src Mat, dst *Mat, coi int) {
 // For further details, please see:
 // https://docs.opencv.org/master/d2/de8/group__core__array.html#gad278044679d4ecf20f7622cc151aaaa2
 //
-func Invert(src Mat, dst *Mat, flags int) float64 {
+func Invert(src Mat, dst *Mat, flags SolveDecompositionFlags) float64 {
 	ret := C.Mat_Invert(src.p, dst.p, C.int(flags))
 	return float64(ret)
 }
@@ -1347,10 +1387,10 @@ const (
 	// KMeansRandomCenters selects random initial centers in each attempt.
 	KMeansRandomCenters KMeansFlags = 0
 	// KMeansPPCenters uses kmeans++ center initialization by Arthur and Vassilvitskii [Arthur2007].
-	KMeansPPCenters = 1
+	KMeansPPCenters KMeansFlags = 1
 	// KMeansUseInitialLabels uses the user-supplied lables during the first (and possibly the only) attempt
 	// instead of computing them from the initial centers. For the second and further attempts, use the random or semi-random     // centers. Use one of KMEANS_*_CENTERS flag to specify the exact method.
-	KMeansUseInitialLabels = 2
+	KMeansUseInitialLabels KMeansFlags = 2
 )
 
 // KMeans finds centers of clusters and groups input samples around the clusters.
@@ -1368,9 +1408,8 @@ func KMeans(data Mat, k int, bestLabels *Mat, criteria TermCriteria, attempts in
 // For further details, please see:
 // https://docs.opencv.org/master/d5/d38/group__core__cluster.html#ga9a34dc06c6ec9460e90860f15bcd2f88
 //
-func KMeansPoints(points []image.Point, k int, bestLabels *Mat, criteria TermCriteria, attempts int, flags KMeansFlags, centers *Mat) float64 {
-	cPoints := toCPoints(points)
-	ret := C.KMeansPoints(cPoints, C.int(k), bestLabels.p, criteria.p, C.int(attempts), C.int(flags), centers.p)
+func KMeansPoints(points PointVector, k int, bestLabels *Mat, criteria TermCriteria, attempts int, flags KMeansFlags, centers *Mat) float64 {
+	ret := C.KMeansPoints(points.p, C.int(k), bestLabels.p, criteria.p, C.int(attempts), C.int(flags), centers.p)
 	return float64(ret)
 }
 
@@ -1472,6 +1511,47 @@ func MinMaxLoc(input Mat) (minVal, maxVal float32, minLoc, maxLoc image.Point) {
 	return float32(cMinVal), float32(cMaxVal), minLoc, maxLoc
 }
 
+// Copies specified channels from input arrays to the specified channels of output arrays.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga51d768c270a1cdd3497255017c4504be
+//
+func MixChannels(src []Mat, dst []Mat, fromTo []int) {
+	cSrcArray := make([]C.Mat, len(src))
+	for i, r := range src {
+		cSrcArray[i] = r.p
+	}
+	cSrcMats := C.struct_Mats{
+		mats:   (*C.Mat)(&cSrcArray[0]),
+		length: C.int(len(src)),
+	}
+
+	cDstArray := make([]C.Mat, len(dst))
+	for i, r := range dst {
+		cDstArray[i] = r.p
+	}
+	cDstMats := C.struct_Mats{
+		mats:   (*C.Mat)(&cDstArray[0]),
+		length: C.int(len(dst)),
+	}
+
+	cFromToArray := make([]C.int, len(fromTo))
+	for i, ft := range fromTo {
+		cFromToArray[i] = C.int(ft)
+	}
+
+	cFromToIntVector := C.IntVector{
+		val:    (*C.int)(&cFromToArray[0]),
+		length: C.int(len(fromTo)),
+	}
+
+	C.Mat_MixChannels(cSrcMats, cDstMats, cFromToIntVector)
+
+	for i := C.int(0); i < cDstMats.length; i++ {
+		dst[i].p = C.Mats_get(cDstMats, i)
+	}
+}
+
 //Mulspectrums performs the per-element multiplication of two Fourier spectrums.
 //
 // For further details, please see:
@@ -1491,6 +1571,16 @@ func Multiply(src1 Mat, src2 Mat, dst *Mat) {
 	C.Mat_Multiply(src1.p, src2.p, dst.p)
 }
 
+// MultiplyWithParams calculates the per-element scaled product of two arrays.
+// Both input arrays must be of the same size and the same type.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga979d898a58d7f61c53003e162e7ad89f
+//
+func MultiplyWithParams(src1 Mat, src2 Mat, dst *Mat, scale float64, dtype MatType) {
+	C.Mat_MultiplyWithParams(src1.p, src2.p, dst.p, C.double(scale), C.int(dtype))
+}
+
 // NormType for normalization operations.
 //
 // For further details, please see:
@@ -1503,28 +1593,28 @@ const (
 	NormInf NormType = 1
 
 	// NormL1 indicates use L1 normalization.
-	NormL1 = 2
+	NormL1 NormType = 2
 
 	// NormL2 indicates use L2 normalization.
-	NormL2 = 4
+	NormL2 NormType = 4
 
 	// NormL2Sqr indicates use L2 squared normalization.
-	NormL2Sqr = 5
+	NormL2Sqr NormType = 5
 
 	// NormHamming indicates use Hamming normalization.
-	NormHamming = 6
+	NormHamming NormType = 6
 
 	// NormHamming2 indicates use Hamming 2-bit normalization.
-	NormHamming2 = 7
+	NormHamming2 NormType = 7
 
 	// NormTypeMask indicates use type mask for normalization.
-	NormTypeMask = 7
+	NormTypeMask NormType = 7
 
 	// NormRelative indicates use relative normalization.
-	NormRelative = 8
+	NormRelative NormType = 8
 
 	// NormMinMax indicates use min/max normalization.
-	NormMinMax = 32
+	NormMinMax NormType = 32
 )
 
 // Normalize normalizes the norm or value range of an array.
@@ -1543,6 +1633,15 @@ func Normalize(src Mat, dst *Mat, alpha float64, beta float64, typ NormType) {
 //
 func Norm(src1 Mat, normType NormType) float64 {
 	return float64(C.Norm(src1.p, C.int(normType)))
+}
+
+// Norm calculates the absolute difference/relative norm of two arrays.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga7c331fb8dd951707e184ef4e3f21dd33
+//
+func NormWithMats(src1 Mat, src2 Mat, normType NormType) float64 {
+	return float64(C.NormWithMats(src1.p, src2.p, C.int(normType)))
 }
 
 // PerspectiveTransform performs the perspective matrix transformation of vectors.
@@ -1566,35 +1665,35 @@ const (
 	Count TermCriteriaType = 1
 
 	// MaxIter is the maximum number of iterations or elements to compute.
-	MaxIter = 1
+	MaxIter TermCriteriaType = 1
 
 	// EPS is the desired accuracy or change in parameters at which the
 	// iterative algorithm stops.
-	EPS = 2
+	EPS TermCriteriaType = 2
 )
 
 type SolveDecompositionFlags int
 
 const (
 	// Gaussian elimination with the optimal pivot element chosen.
-	SolveDecompositionLu = 0
+	SolveDecompositionLu SolveDecompositionFlags = 0
 
 	// Singular value decomposition (SVD) method. The system can be over-defined and/or the matrix src1 can be singular.
-	SolveDecompositionSvd = 1
+	SolveDecompositionSvd SolveDecompositionFlags = 1
 
 	// Eigenvalue decomposition. The matrix src1 must be symmetrical.
-	SolveDecompositionEing = 2
+	SolveDecompositionEing SolveDecompositionFlags = 2
 
 	// Cholesky LL^T factorization. The matrix src1 must be symmetrical and positively defined.
-	SolveDecompositionCholesky = 3
+	SolveDecompositionCholesky SolveDecompositionFlags = 3
 
 	// QR factorization. The system can be over-defined and/or the matrix src1 can be singular.
-	SolveDecompositionQr = 4
+	SolveDecompositionQr SolveDecompositionFlags = 4
 
 	// While all the previous flags are mutually exclusive, this flag can be used together with any of the previous.
 	// It means that the normal equations 𝚜𝚛𝚌𝟷^T⋅𝚜𝚛𝚌𝟷⋅𝚍𝚜𝚝=𝚜𝚛𝚌𝟷^T𝚜𝚛𝚌𝟸 are solved instead of the original system
 	// 𝚜𝚛𝚌𝟷⋅𝚍𝚜𝚝=𝚜𝚛𝚌𝟸.
-	SolveDecompositionNormal = 5
+	SolveDecompositionNormal SolveDecompositionFlags = 5
 )
 
 // Solve solves one or more linear systems or least-squares problems.
@@ -1645,7 +1744,7 @@ const (
 // For further details, please see:
 // https://docs.opencv.org/master/d2/de8/group__core__array.html#ga4b78072a303f29d9031d56e5638da78e
 //
-func Reduce(src Mat, dst *Mat, dim int, rType ReduceTypes, dType int) {
+func Reduce(src Mat, dst *Mat, dim int, rType ReduceTypes, dType MatType) {
 	C.Mat_Reduce(src.p, dst.p, C.int(dim), C.int(rType), C.int(dType))
 }
 
@@ -1711,6 +1810,7 @@ func SortIdx(src Mat, dst *Mat, flags SortFlags) {
 }
 
 // Split creates an array of single channel images from a multi-channel image
+// Created images should be closed manualy to avoid memory leaks.
 //
 // For further details, please see:
 // https://docs.opencv.org/master/d2/de8/group__core__array.html#ga0547c7fed86152d7e9d0096029c8518a
@@ -1718,9 +1818,11 @@ func SortIdx(src Mat, dst *Mat, flags SortFlags) {
 func Split(src Mat) (mv []Mat) {
 	cMats := C.struct_Mats{}
 	C.Mat_Split(src.p, &(cMats))
+	defer C.Mats_Close(cMats)
 	mv = make([]Mat, cMats.length)
 	for i := C.int(0); i < cMats.length; i++ {
 		mv[i].p = C.Mats_get(cMats, i)
+		addMatToProfile(mv[i].p)
 	}
 	return
 }
@@ -1844,6 +1946,22 @@ type DMatch struct {
 	Distance float64
 }
 
+// Vecb is a generic vector of bytes.
+type Vecb []uint8
+
+// GetVecbAt returns a vector of bytes. Its size corresponds to the number
+// of channels of the Mat.
+func (m *Mat) GetVecbAt(row int, col int) Vecb {
+	ch := m.Channels()
+	v := make(Vecb, ch)
+
+	for c := 0; c < ch; c++ {
+		v[c] = m.GetUCharAt(row, col*ch+c)
+	}
+
+	return v
+}
+
 // Vecf is a generic vector of floats.
 type Vecf []float32
 
@@ -1855,6 +1973,22 @@ func (m *Mat) GetVecfAt(row int, col int) Vecf {
 
 	for c := 0; c < ch; c++ {
 		v[c] = m.GetFloatAt(row, col*ch+c)
+	}
+
+	return v
+}
+
+// Vecd is a generic vector of float64/doubles.
+type Vecd []float64
+
+// GetVecdAt returns a vector of float64s. Its size corresponds to the number
+// of channels of the Mat.
+func (m *Mat) GetVecdAt(row int, col int) Vecd {
+	ch := m.Channels()
+	v := make(Vecd, ch)
+
+	for c := 0; c < ch; c++ {
+		v[c] = m.GetDoubleAt(row, col*ch+c)
 	}
 
 	return v
@@ -1874,6 +2008,274 @@ func (m *Mat) GetVeciAt(row int, col int) Veci {
 	}
 
 	return v
+}
+
+// PointVector is a wrapper around a std::vector< cv::Point >*
+// This is needed anytime that you need to pass or receive a collection of points.
+type PointVector struct {
+	p C.PointVector
+}
+
+// NewPointVector returns a new empty PointVector.
+func NewPointVector() PointVector {
+	return PointVector{p: C.PointVector_New()}
+}
+
+// NewPointVectorFromPoints returns a new PointVector that has been
+// initialized to a slice of image.Point.
+func NewPointVectorFromPoints(pts []image.Point) PointVector {
+	p := (*C.struct_Point)(C.malloc(C.size_t(C.sizeof_struct_Point * len(pts))))
+	defer C.free(unsafe.Pointer(p))
+
+	h := &reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(p)),
+		Len:  len(pts),
+		Cap:  len(pts),
+	}
+	pa := *(*[]C.Point)(unsafe.Pointer(h))
+
+	for j, point := range pts {
+		pa[j] = C.struct_Point{
+			x: C.int(point.X),
+			y: C.int(point.Y),
+		}
+	}
+
+	cpoints := C.struct_Points{
+		points: (*C.Point)(p),
+		length: C.int(len(pts)),
+	}
+
+	return PointVector{p: C.PointVector_NewFromPoints(cpoints)}
+}
+
+// NewPointVectorFromMat returns a new PointVector that has been
+// wrapped around a Mat of type CV_32SC2 with a single columm.
+func NewPointVectorFromMat(mat Mat) PointVector {
+	return PointVector{p: C.PointVector_NewFromMat(mat.p)}
+}
+
+// IsNil checks the CGo pointer in the PointVector.
+func (pv PointVector) IsNil() bool {
+	return pv.p == nil
+}
+
+// Size returns how many Point are in the PointVector.
+func (pv PointVector) Size() int {
+	return int(C.PointVector_Size(pv.p))
+}
+
+// At returns the image.Point
+func (pv PointVector) At(idx int) image.Point {
+	if idx > pv.Size() {
+		return image.Point{}
+	}
+
+	cp := C.PointVector_At(pv.p, C.int(idx))
+	return image.Pt(int(cp.x), int(cp.y))
+}
+
+// Append appends an image.Point at end of the PointVector.
+func (pv PointVector) Append(point image.Point) {
+	p := C.struct_Point{
+		x: C.int(point.X),
+		y: C.int(point.Y),
+	}
+
+	C.PointVector_Append(pv.p, p)
+
+	return
+}
+
+// ToPoints returns a slice of image.Point for the data in this PointVector.
+func (pv PointVector) ToPoints() []image.Point {
+	points := make([]image.Point, pv.Size())
+
+	for j := 0; j < pv.Size(); j++ {
+		points[j] = pv.At(j)
+	}
+	return points
+}
+
+// Close closes and frees memory for this PointVector.
+func (pv PointVector) Close() {
+	C.PointVector_Close(pv.p)
+}
+
+// PointsVector is a wrapper around a std::vector< std::vector< cv::Point > >*
+type PointsVector struct {
+	p C.PointsVector
+}
+
+// NewPointsVector returns a new empty PointsVector.
+func NewPointsVector() PointsVector {
+	return PointsVector{p: C.PointsVector_New()}
+}
+
+// NewPointsVectorFromPoints returns a new PointsVector that has been
+// initialized to a slice of slices of image.Point.
+func NewPointsVectorFromPoints(pts [][]image.Point) PointsVector {
+	points := make([]C.struct_Points, len(pts))
+
+	for i, pt := range pts {
+		p := (*C.struct_Point)(C.malloc(C.size_t(C.sizeof_struct_Point * len(pt))))
+		defer C.free(unsafe.Pointer(p))
+
+		h := &reflect.SliceHeader{
+			Data: uintptr(unsafe.Pointer(p)),
+			Len:  len(pt),
+			Cap:  len(pt),
+		}
+		pa := *(*[]C.Point)(unsafe.Pointer(h))
+
+		for j, point := range pt {
+			pa[j] = C.struct_Point{
+				x: C.int(point.X),
+				y: C.int(point.Y),
+			}
+		}
+
+		points[i] = C.struct_Points{
+			points: (*C.Point)(p),
+			length: C.int(len(pt)),
+		}
+	}
+
+	cPoints := C.struct_Contours{
+		contours: (*C.struct_Points)(&points[0]),
+		length:   C.int(len(pts)),
+	}
+
+	return PointsVector{p: C.PointsVector_NewFromPoints(cPoints)}
+}
+
+// ToPoints returns a slice of slices of image.Point for the data in this PointsVector.
+func (pvs PointsVector) ToPoints() [][]image.Point {
+	ppoints := make([][]image.Point, pvs.Size())
+	for i := 0; i < pvs.Size(); i++ {
+		pts := pvs.At(i)
+		points := make([]image.Point, pts.Size())
+
+		for j := 0; j < pts.Size(); j++ {
+			points[j] = pts.At(j)
+		}
+		ppoints[i] = points
+	}
+
+	return ppoints
+}
+
+// IsNil checks the CGo pointer in the PointsVector.
+func (pvs PointsVector) IsNil() bool {
+	return pvs.p == nil
+}
+
+// Size returns how many vectors of Points are in the PointsVector.
+func (pvs PointsVector) Size() int {
+	return int(C.PointsVector_Size(pvs.p))
+}
+
+// At returns the PointVector at that index of the PointsVector.
+func (pvs PointsVector) At(idx int) PointVector {
+	if idx > pvs.Size() {
+		return PointVector{}
+	}
+
+	return PointVector{p: C.PointsVector_At(pvs.p, C.int(idx))}
+}
+
+// Append appends a PointVector at end of the PointsVector.
+func (pvs PointsVector) Append(pv PointVector) {
+	if !pv.IsNil() {
+		C.PointsVector_Append(pvs.p, pv.p)
+	}
+
+	return
+}
+
+// Close closes and frees memory for this PointsVector.
+func (pvs PointsVector) Close() {
+	C.PointsVector_Close(pvs.p)
+}
+
+// Point2fVector is a wrapper around a std::vector< cv::Point2f >*
+// This is needed anytime that you need to pass or receive a collection of points.
+type Point2fVector struct {
+	p C.Point2fVector
+}
+
+// NewPoint2fVector returns a new empty Point2fVector.
+func NewPoint2fVector() Point2fVector {
+	return Point2fVector{p: C.Point2fVector_New()}
+}
+
+// NewPoint2fVectorFromPoints returns a new Point2fVector that has been
+// initialized to a slice of image.Point.
+func NewPoint2fVectorFromPoints(pts []Point2f) Point2fVector {
+	p := (*C.struct_Point2f)(C.malloc(C.size_t(C.sizeof_struct_Point2f * len(pts))))
+	defer C.free(unsafe.Pointer(p))
+
+	h := &reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(p)),
+		Len:  len(pts),
+		Cap:  len(pts),
+	}
+	pa := *(*[]C.Point2f)(unsafe.Pointer(h))
+
+	for j, point := range pts {
+		pa[j] = C.struct_Point2f{
+			x: C.float(point.X),
+			y: C.float(point.Y),
+		}
+	}
+
+	cpoints := C.struct_Points2f{
+		points: (*C.Point2f)(p),
+		length: C.int(len(pts)),
+	}
+
+	return Point2fVector{p: C.Point2fVector_NewFromPoints(cpoints)}
+}
+
+// NewPoint2fVectorFromMat returns a new Point2fVector that has been
+// wrapped around a Mat of type CV_32FC2 with a single columm.
+func NewPoint2fVectorFromMat(mat Mat) Point2fVector {
+	return Point2fVector{p: C.Point2fVector_NewFromMat(mat.p)}
+}
+
+// IsNil checks the CGo pointer in the Point2fVector.
+func (pfv Point2fVector) IsNil() bool {
+	return pfv.p == nil
+}
+
+// Size returns how many Point are in the PointVector.
+func (pfv Point2fVector) Size() int {
+	return int(C.Point2fVector_Size(pfv.p))
+}
+
+// At returns the image.Point
+func (pfv Point2fVector) At(idx int) Point2f {
+	if idx > pfv.Size() {
+		return Point2f{}
+	}
+
+	cp := C.Point2fVector_At(pfv.p, C.int(idx))
+	return Point2f{float32(cp.x), float32(cp.y)}
+}
+
+// ToPoints returns a slice of image.Point for the data in this PointVector.
+func (pfv Point2fVector) ToPoints() []Point2f {
+	points := make([]Point2f, pfv.Size())
+
+	for j := 0; j < pfv.Size(); j++ {
+		points[j] = pfv.At(j)
+	}
+	return points
+}
+
+// Close closes and frees memory for this Point2fVector.
+func (pfv Point2fVector) Close() {
+	C.Point2fVector_Close(pfv.p)
 }
 
 // GetTickCount returns the number of ticks.
@@ -1906,6 +2308,17 @@ func toByteArray(b []byte) (*C.struct_ByteArray, error) {
 
 func toGoBytes(b C.struct_ByteArray) []byte {
 	return C.GoBytes(unsafe.Pointer(b.data), b.length)
+}
+
+// Converts CStrings to a slice of Go strings even when the C strings are not contiguous in memory
+func toGoStrings(strs C.CStrings) []string {
+	length := int(strs.length)
+	tmpslice := (*[1 << 20]*C.char)(unsafe.Pointer(strs.strs))[:length:length]
+	gostrings := make([]string, length)
+	for i, s := range tmpslice {
+		gostrings[i] = C.GoString(s)
+	}
+	return gostrings
 }
 
 func toRectangles(ret C.Rects) []image.Rectangle {
@@ -1944,6 +2357,21 @@ func toCPoints(points []image.Point) C.struct_Points {
 	}
 }
 
+func toCPoints2f(points []Point2f) C.struct_Points2f {
+	cPointSlice := make([]C.struct_Point2f, len(points))
+	for i, point := range points {
+		cPointSlice[i] = C.struct_Point2f{
+			x: C.float(point.X),
+			y: C.float(point.Y),
+		}
+	}
+
+	return C.struct_Points2f{
+		points: (*C.Point2f)(&cPointSlice[0]),
+		length: C.int(len(points)),
+	}
+}
+
 func toCStrings(strs []string) C.struct_CStrings {
 	cStringsSlice := make([]*C.char, len(strs))
 	for i, s := range strs {
@@ -1972,4 +2400,177 @@ func (m *Mat) RowRange(start, end int) Mat {
 //
 func (m *Mat) ColRange(start, end int) Mat {
 	return newMat(C.Mat_colRange(m.p, C.int(start), C.int(end)))
+}
+
+// RNG Random Number Generator.
+// It encapsulates the state (currently, a 64-bit integer) and
+// has methods to return scalar random values and to fill arrays
+// with random values
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d1/dd6/classcv_1_1RNG.html
+//
+type RNG struct {
+	p C.RNG
+}
+
+type RNGDistType int
+
+const (
+	// Uniform distribution
+	RNGDistUniform RNGDistType = 0
+	// Normal distribution
+	RNGDistNormal RNGDistType = 1
+)
+
+// TheRNG Returns the default random number generator.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga75843061d150ad6564b5447e38e57722
+//
+func TheRNG() RNG {
+	return RNG{
+		p: C.TheRNG(),
+	}
+}
+
+// TheRNG Sets state of default random number generator.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga757e657c037410d9e19e819569e7de0f
+//
+func SetRNGSeed(seed int) {
+	C.SetRNGSeed(C.int(seed))
+}
+
+// Fill Fills arrays with random numbers.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d1/dd6/classcv_1_1RNG.html#ad26f2b09d9868cf108e84c9814aa682d
+//
+func (r *RNG) Fill(mat *Mat, distType RNGDistType, a, b float64, saturateRange bool) {
+	C.RNG_Fill(r.p, mat.p, C.int(distType), C.double(a), C.double(b), C.bool(saturateRange))
+}
+
+// Gaussian Returns the next random number sampled from
+// the Gaussian distribution.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d1/dd6/classcv_1_1RNG.html#a8df8ce4dc7d15916cee743e5a884639d
+//
+func (r *RNG) Gaussian(sigma float64) float64 {
+	return float64(C.RNG_Gaussian(r.p, C.double(sigma)))
+}
+
+// Next The method updates the state using the MWC algorithm
+// and returns the next 32-bit random number.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d1/dd6/classcv_1_1RNG.html#a8df8ce4dc7d15916cee743e5a884639d
+//
+func (r *RNG) Next() uint {
+	return uint(C.RNG_Next(r.p))
+}
+
+// RandN Fills the array with normally distributed random numbers.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#gaeff1f61e972d133a04ce3a5f81cf6808
+//
+func RandN(mat *Mat, mean, stddev Scalar) {
+	meanVal := C.struct_Scalar{
+		val1: C.double(mean.Val1),
+		val2: C.double(mean.Val2),
+		val3: C.double(mean.Val3),
+		val4: C.double(mean.Val4),
+	}
+	stddevVal := C.struct_Scalar{
+		val1: C.double(stddev.Val1),
+		val2: C.double(stddev.Val2),
+		val3: C.double(stddev.Val3),
+		val4: C.double(stddev.Val4),
+	}
+
+	C.RandN(mat.p, meanVal, stddevVal)
+}
+
+// RandShuffle Shuffles the array elements randomly.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga6a789c8a5cb56c6dd62506179808f763
+//
+func RandShuffle(mat *Mat) {
+	C.RandShuffle(mat.p)
+}
+
+// RandShuffleWithParams Shuffles the array elements randomly.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga6a789c8a5cb56c6dd62506179808f763
+//
+func RandShuffleWithParams(mat *Mat, iterFactor float64, rng RNG) {
+	C.RandShuffleWithParams(mat.p, C.double(iterFactor), rng.p)
+}
+
+// RandU Generates a single uniformly-distributed random
+// number or an array of random numbers.
+//
+// For further details, please see:
+// https://docs.opencv.org/master/d2/de8/group__core__array.html#ga1ba1026dca0807b27057ba6a49d258c0
+//
+func RandU(mat *Mat, low, high Scalar) {
+	lowVal := C.struct_Scalar{
+		val1: C.double(low.Val1),
+		val2: C.double(low.Val2),
+		val3: C.double(low.Val3),
+		val4: C.double(low.Val4),
+	}
+	highVal := C.struct_Scalar{
+		val1: C.double(high.Val1),
+		val2: C.double(high.Val2),
+		val3: C.double(high.Val3),
+		val4: C.double(high.Val4),
+	}
+
+	C.RandU(mat.p, lowVal, highVal)
+}
+
+type NativeByteBuffer struct {
+	// std::vector is build of 3 pointers And this will not change ever.
+	stdVectorOpaq [3]uintptr
+}
+
+func newNativeByteBuffer() *NativeByteBuffer {
+	buffer := &NativeByteBuffer{}
+	C.StdByteVectorInitialize(buffer.nativePointer())
+	return buffer
+}
+
+func (buffer *NativeByteBuffer) nativePointer() unsafe.Pointer {
+	return unsafe.Pointer(&buffer.stdVectorOpaq[0])
+}
+
+func (buffer *NativeByteBuffer) dataPointer() unsafe.Pointer {
+	return unsafe.Pointer(C.StdByteVectorData(buffer.nativePointer()))
+}
+
+// GetBytes returns slice of bytes backed by native buffer
+func (buffer *NativeByteBuffer) GetBytes() []byte {
+	var result []byte
+	sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&result))
+	vectorLen := int(C.StdByteVectorLen(buffer.nativePointer()))
+	sliceHeader.Cap = vectorLen
+	sliceHeader.Len = vectorLen
+	sliceHeader.Data = uintptr(buffer.dataPointer())
+	return result
+}
+
+// Len - returns length in bytes of underlying buffer
+func (buffer *NativeByteBuffer) Len() int {
+	return int(C.StdByteVectorLen(buffer.nativePointer()))
+}
+
+// Close the buffer releasing all its resources
+func (buffer *NativeByteBuffer) Close() {
+	C.StdByteVectorFree(buffer.nativePointer())
 }

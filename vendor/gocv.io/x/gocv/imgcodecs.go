@@ -19,48 +19,52 @@ const (
 
 	// IMReadGrayScale always convert image to the single channel
 	// grayscale image.
-	IMReadGrayScale = 0
+	IMReadGrayScale IMReadFlag = 0
 
 	// IMReadColor always converts image to the 3 channel BGR color image.
-	IMReadColor = 1
+	IMReadColor IMReadFlag = 1
 
 	// IMReadAnyDepth returns 16-bit/32-bit image when the input has the corresponding
 	// depth, otherwise convert it to 8-bit.
-	IMReadAnyDepth = 2
+	IMReadAnyDepth IMReadFlag = 2
 
 	// IMReadAnyColor the image is read in any possible color format.
-	IMReadAnyColor = 4
+	IMReadAnyColor IMReadFlag = 4
 
 	// IMReadLoadGDAL uses the gdal driver for loading the image.
-	IMReadLoadGDAL = 8
+	IMReadLoadGDAL IMReadFlag = 8
 
 	// IMReadReducedGrayscale2 always converts image to the single channel grayscale image
 	// and the image size reduced 1/2.
-	IMReadReducedGrayscale2 = 16
+	IMReadReducedGrayscale2 IMReadFlag = 16
 
 	// IMReadReducedColor2 always converts image to the 3 channel BGR color image and the
 	// image size reduced 1/2.
-	IMReadReducedColor2 = 17
+	IMReadReducedColor2 IMReadFlag = 17
 
 	// IMReadReducedGrayscale4 always converts image to the single channel grayscale image and
 	// the image size reduced 1/4.
-	IMReadReducedGrayscale4 = 32
+	IMReadReducedGrayscale4 IMReadFlag = 32
 
 	// IMReadReducedColor4 always converts image to the 3 channel BGR color image and
 	// the image size reduced 1/4.
-	IMReadReducedColor4 = 33
+	IMReadReducedColor4 IMReadFlag = 33
 
 	// IMReadReducedGrayscale8 always convert image to the single channel grayscale image and
 	// the image size reduced 1/8.
-	IMReadReducedGrayscale8 = 64
+	IMReadReducedGrayscale8 IMReadFlag = 64
 
 	// IMReadReducedColor8 always convert image to the 3 channel BGR color image and the
 	// image size reduced 1/8.
-	IMReadReducedColor8 = 65
+	IMReadReducedColor8 IMReadFlag = 65
 
 	// IMReadIgnoreOrientation do not rotate the image according to EXIF's orientation flag.
-	IMReadIgnoreOrientation = 128
+	IMReadIgnoreOrientation IMReadFlag = 128
+)
 
+// TODO: Define IMWriteFlag type?
+
+const (
 	//IMWriteJpegQuality is the quality from 0 to 100 for JPEG (the higher is the better). Default value is 95.
 	IMWriteJpegQuality = 1
 
@@ -193,13 +197,13 @@ const (
 // For further details, please see:
 // http://docs.opencv.org/master/d4/da8/group__imgcodecs.html#ga461f9ac09887e47797a54567df3b8b63
 //
-func IMEncode(fileExt FileExt, img Mat) (buf []byte, err error) {
+func IMEncode(fileExt FileExt, img Mat) (buf *NativeByteBuffer, err error) {
 	cfileExt := C.CString(string(fileExt))
 	defer C.free(unsafe.Pointer(cfileExt))
 
-	b := C.Image_IMEncode(cfileExt, img.Ptr())
-	defer C.ByteArray_Release(b)
-	return toGoBytes(b), nil
+	buffer := newNativeByteBuffer()
+	C.Image_IMEncode(cfileExt, img.Ptr(), buffer.nativePointer())
+	return buffer, nil
 }
 
 // IMEncodeWithParams encodes an image Mat into a memory buffer.
@@ -212,7 +216,7 @@ func IMEncode(fileExt FileExt, img Mat) (buf []byte, err error) {
 // For further details, please see:
 // http://docs.opencv.org/master/d4/da8/group__imgcodecs.html#ga461f9ac09887e47797a54567df3b8b63
 //
-func IMEncodeWithParams(fileExt FileExt, img Mat, params []int) (buf []byte, err error) {
+func IMEncodeWithParams(fileExt FileExt, img Mat, params []int) (buf *NativeByteBuffer, err error) {
 	cfileExt := C.CString(string(fileExt))
 	defer C.free(unsafe.Pointer(cfileExt))
 
@@ -226,9 +230,9 @@ func IMEncodeWithParams(fileExt FileExt, img Mat, params []int) (buf []byte, err
 	paramsVector.val = (*C.int)(&cparams[0])
 	paramsVector.length = (C.int)(len(cparams))
 
-	b := C.Image_IMEncode_WithParams(cfileExt, img.Ptr(), paramsVector)
-	defer C.ByteArray_Release(b)
-	return toGoBytes(b), nil
+	b := newNativeByteBuffer()
+	C.Image_IMEncode_WithParams(cfileExt, img.Ptr(), paramsVector, b.nativePointer())
+	return b, nil
 }
 
 // IMDecode reads an image from a buffer in memory.

@@ -1,4 +1,4 @@
-FROM golang:alpine as gobuilder
+FROM golang:1.17-alpine as gobuilder
 
 
 FROM cyrilix/opencv-buildstage:4.2.0 as builder

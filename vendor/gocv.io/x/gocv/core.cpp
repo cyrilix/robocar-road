@@ -11,6 +11,15 @@ Mat Mat_NewWithSize(int rows, int cols, int type) {
     return new cv::Mat(rows, cols, type, 0.0);
 }
 
+// Mat_NewWithSizes creates a new Mat with specific dimension sizes and number of channels.
+Mat Mat_NewWithSizes(struct IntVector sizes, int type) {
+	std::vector<int> sizess;
+    for (int i = 0; i < sizes.length; ++i) {
+        sizess.push_back(sizes.val[i]);
+    }
+    return new cv::Mat(sizess, type);
+}
+
 // Mat_NewFromScalar creates a new Mat from a Scalar. Intended to be used
 // for Mat comparison operation such as InRange.
 Mat Mat_NewFromScalar(Scalar ar, int type) {
@@ -28,6 +37,42 @@ Mat Mat_NewFromBytes(int rows, int cols, int type, struct ByteArray buf) {
     return new cv::Mat(rows, cols, type, buf.data);
 }
 
+// Mat_NewWithSizesFromScalar creates multidimensional Mat from a scalar
+Mat Mat_NewWithSizesFromScalar(IntVector sizes, int type, Scalar ar) {
+    std::vector<int> _sizes;
+    for (int i = 0, *v = sizes.val; i < sizes.length; ++v, ++i) {
+        _sizes.push_back(*v);
+    }
+
+    cv::Scalar c = cv::Scalar(ar.val1, ar.val2, ar.val3, ar.val4);
+    return new cv::Mat(_sizes, type, c);
+}
+
+// Mat_NewWithSizesFromBytes creates multidimensional Mat from a bytes
+Mat Mat_NewWithSizesFromBytes(IntVector sizes, int type, struct ByteArray buf) {
+    std::vector<int> _sizes;
+    for (int i = 0, *v = sizes.val; i < sizes.length; ++v, ++i) {
+        _sizes.push_back(*v);
+    }
+
+    return new cv::Mat(_sizes, type, buf.data);
+}
+
+Mat Eye(int rows, int cols, int type) {
+    cv::Mat temp = cv::Mat::eye(rows, cols, type);
+    return new cv::Mat(rows, cols, type, temp.data);
+}
+
+Mat Zeros(int rows, int cols, int type) {
+    cv::Mat temp = cv::Mat::zeros(rows, cols, type);
+    return new cv::Mat(rows, cols, type, temp.data);
+}
+
+Mat Ones(int rows, int cols, int type) {
+    cv::Mat temp = cv::Mat::ones(rows, cols, type);
+    return new cv::Mat(rows, cols, type, temp.data);
+}
+
 Mat Mat_FromPtr(Mat m, int rows, int cols, int type, int prow, int pcol) {
     return new cv::Mat(rows, cols, type, m->ptr(prow, pcol));
 }
@@ -40,6 +85,11 @@ void Mat_Close(Mat m) {
 // Mat_Empty tests if a Mat is empty
 int Mat_Empty(Mat m) {
     return m->empty();
+}
+
+// Mat_IsContinuous tests if a Mat is continuous
+bool Mat_IsContinuous(Mat m) {
+    return m->isContinuous();
 }
 
 // Mat_Clone returns a clone of this Mat
@@ -59,6 +109,10 @@ void Mat_CopyToWithMask(Mat m, Mat dst, Mat mask) {
 
 void Mat_ConvertTo(Mat m, Mat dst, int type) {
     m->convertTo(*dst, type);
+}
+
+void Mat_ConvertToWithParams(Mat m, Mat dst, int type, float alpha, float beta) {
+    m->convertTo(*dst, type, alpha, beta);
 }
 
 // Mat_ToBytes returns the bytes representation of the underlying data.
@@ -511,12 +565,9 @@ double KMeans(Mat data, int k, Mat bestLabels, TermCriteria criteria, int attemp
     return ret;
 }
 
-double KMeansPoints(Contour points, int k, Mat bestLabels, TermCriteria criteria, int attempts, int flags, Mat centers) {
+double KMeansPoints(PointVector points, int k, Mat bestLabels, TermCriteria criteria, int attempts, int flags, Mat centers) {
     std::vector<cv::Point2f> pts;
-
-    for (size_t i = 0; i < points.length; i++) {
-        pts.push_back(cv::Point2f(points.points[i].x, points.points[i].y));
-    }
+    copyPointVectorToPoint2fVector(points, &pts);
     double ret = cv::kmeans(pts, k, *bestLabels, *criteria, attempts, flags, *centers);
     return ret;
 }
@@ -566,6 +617,28 @@ void Mat_MinMaxLoc(Mat m, double* minVal, double* maxVal, Point* minLoc, Point* 
     maxLoc->y = cMaxLoc.y;
 }
 
+void Mat_MixChannels(struct Mats src, struct Mats dst, struct IntVector fromTo) {
+    std::vector<cv::Mat> srcMats;
+
+    for (int i = 0; i < src.length; ++i) {
+        srcMats.push_back(*src.mats[i]);
+    }
+
+    std::vector<cv::Mat> dstMats;
+
+    for (int i = 0; i < dst.length; ++i) {
+        dstMats.push_back(*dst.mats[i]);
+    }
+
+    std::vector<int> fromTos;
+
+    for (int i = 0; i < fromTo.length; ++i) {
+        fromTos.push_back(fromTo.val[i]);
+    }
+
+    cv::mixChannels(srcMats, dstMats, fromTos);
+}
+
 void Mat_MulSpectrums(Mat a, Mat b, Mat c, int flags) {
     cv::mulSpectrums(*a, *b, *c, flags);
 }
@@ -574,12 +647,20 @@ void Mat_Multiply(Mat src1, Mat src2, Mat dst) {
     cv::multiply(*src1, *src2, *dst);
 }
 
+void Mat_MultiplyWithParams(Mat src1, Mat src2, Mat dst, double scale, int dtype) {
+    cv::multiply(*src1, *src2, *dst, scale, dtype);
+}
+
 void Mat_Normalize(Mat src, Mat dst, double alpha, double beta, int typ) {
     cv::normalize(*src, *dst, alpha, beta, typ);
 }
 
 double Norm(Mat src1, int normType) {
     return cv::norm(*src1, normType);
+}
+
+double NormWithMats(Mat src1, Mat src2, int normType) {
+    return cv::norm(*src1, *src2, normType);
 }
 
 void Mat_PerspectiveTransform(Mat src, Mat dst, Mat tm) {
@@ -692,6 +773,13 @@ void Contours_Close(struct Contours cs) {
     delete[] cs.contours;
 }
 
+void CStrings_Close(struct CStrings cstrs) {
+    for ( int i = 0; i < cstrs.length; i++ ) {
+        delete [] cstrs.strs[i];
+    }
+    delete [] cstrs.strs;
+}
+
 void KeyPoints_Close(struct KeyPoints ks) {
     delete[] ks.keypoints;
 }
@@ -761,3 +849,180 @@ Mat Mat_colRange(Mat m,int startrow,int endrow) {
     return new cv::Mat(m->colRange(startrow,endrow));
 }
 
+PointVector PointVector_New() {
+    return new std::vector< cv::Point >;
+}
+
+PointVector PointVector_NewFromPoints(Contour points) {
+    std::vector<cv::Point>* cntr = new std::vector<cv::Point>;
+
+    for (size_t i = 0; i < points.length; i++) {
+        cntr->push_back(cv::Point(points.points[i].x, points.points[i].y));
+    }
+
+    return cntr;
+}
+
+PointVector PointVector_NewFromMat(Mat mat) {
+    std::vector<cv::Point>* pts = new std::vector<cv::Point>;
+    *pts = (std::vector<cv::Point>) *mat;
+    return pts;
+}
+
+Point PointVector_At(PointVector pv, int idx) {
+    cv::Point p = pv->at(idx);
+    return Point{.x = p.x, .y = p.y};
+}
+
+void PointVector_Append(PointVector pv, Point p) {
+    pv->push_back(cv::Point(p.x, p.y));
+}
+
+int PointVector_Size(PointVector p) {
+    return p->size();
+}
+
+void PointVector_Close(PointVector p) {
+    p->clear();
+    delete p;
+}
+
+PointsVector PointsVector_New() {
+    return new std::vector< std::vector< cv::Point > >;
+}
+
+PointsVector PointsVector_NewFromPoints(Contours points) {
+    std::vector< std::vector< cv::Point > >* pv = new std::vector< std::vector< cv::Point > >;
+
+    for (size_t i = 0; i < points.length; i++) {
+        Contour contour = points.contours[i];
+
+        std::vector<cv::Point> cntr;
+
+        for (size_t i = 0; i < contour.length; i++) {
+            cntr.push_back(cv::Point(contour.points[i].x, contour.points[i].y));
+        }
+
+        pv->push_back(cntr);
+    }
+
+    return pv;
+}
+
+int PointsVector_Size(PointsVector ps) {
+    return ps->size();
+}
+
+PointVector PointsVector_At(PointsVector ps, int idx) {
+    std::vector< cv::Point >* p = &(ps->at(idx));
+    return p;
+}
+
+void PointsVector_Append(PointsVector psv, PointVector pv) {
+    psv->push_back(*pv);
+}
+
+void PointsVector_Close(PointsVector ps) {
+    ps->clear();
+    delete ps;
+}
+
+Point2fVector Point2fVector_New() {
+    return new std::vector< cv::Point2f >;
+}
+
+Point2fVector Point2fVector_NewFromPoints(Contour2f points) {
+    std::vector<cv::Point2f>* cntr = new std::vector<cv::Point2f>;
+
+    for (size_t i = 0; i < points.length; i++) {
+        cntr->push_back(cv::Point2f(points.points[i].x, points.points[i].y));
+    }
+
+    return cntr;
+}
+
+Point2fVector Point2fVector_NewFromMat(Mat mat) {
+    std::vector<cv::Point2f>* pts = new std::vector<cv::Point2f>;
+    *pts = (std::vector<cv::Point2f>) *mat;
+    return pts;
+}
+
+Point2f Point2fVector_At(Point2fVector pfv, int idx) {
+    cv::Point2f p = pfv->at(idx);
+    return Point2f{.x = p.x, .y = p.y};
+}
+
+int Point2fVector_Size(Point2fVector pfv) {
+    return pfv->size();
+}
+
+void Point2fVector_Close(Point2fVector pv) {
+    pv->clear();
+    delete pv;
+}
+
+void IntVector_Close(struct IntVector ivec) {
+    delete[] ivec.val;
+}
+
+RNG TheRNG() {
+    return &cv::theRNG();
+}
+
+void SetRNGSeed(int seed) {
+    cv::setRNGSeed(seed);
+}
+
+void RNG_Fill(RNG rng, Mat mat, int distType, double a, double b, bool saturateRange) {
+    rng->fill(*mat, distType, a, b, saturateRange);
+}
+
+double RNG_Gaussian(RNG rng, double sigma) {
+    return rng->gaussian(sigma);
+}
+
+unsigned int RNG_Next(RNG rng) {
+    return rng->next();
+}
+
+void RandN(Mat mat, Scalar mean, Scalar stddev) {
+    cv::Scalar m = cv::Scalar(mean.val1, mean.val2, mean.val3, mean.val4);
+    cv::Scalar s = cv::Scalar(stddev.val1, stddev.val2, stddev.val3, stddev.val4);
+    cv::randn(*mat, m, s);
+}
+
+void RandShuffle(Mat mat) {
+    cv::randShuffle(*mat);
+}
+
+void RandShuffleWithParams(Mat mat, double iterFactor, RNG rng) {
+    cv::randShuffle(*mat, iterFactor, rng);
+}
+
+void RandU(Mat mat, Scalar low, Scalar high) {
+    cv::Scalar l = cv::Scalar(low.val1, low.val2, low.val3, low.val4);
+    cv::Scalar h = cv::Scalar(high.val1, high.val2, high.val3, high.val4);
+    cv::randn(*mat, l, h);
+}
+
+void copyPointVectorToPoint2fVector(PointVector src, Point2fVector dest) {
+    for (size_t i = 0; i < src->size(); i++) {
+        dest->push_back(cv::Point2f(src->at(i).x, src->at(i).y));
+    }
+}
+
+void StdByteVectorInitialize(void* data) {
+    new (data) std::vector<uchar>();
+}
+
+void StdByteVectorFree(void *data) {
+    reinterpret_cast<std::vector<uchar> *>(data)->~vector<uchar>();
+}
+
+size_t StdByteVectorLen(void *data) {
+    return reinterpret_cast<std::vector<uchar> *>(data)->size();
+}
+
+uint8_t* StdByteVectorData(void *data) {
+    return reinterpret_cast<std::vector<uchar> *>(data)->data();
+}

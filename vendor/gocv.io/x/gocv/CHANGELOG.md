@@ -1,3 +1,231 @@
+0.28.0
+---
+* **all**
+    * update to OpenCV 4.5.3
+    * make task and build tag for static build of OpenCV/GoCV on Linux
+    * add Makefile tasks for OpenCV install on Nvidia Jetson
+    * add gotest for more colorful test output running tests from containers
+* **build**
+    * correcting output format for code coverage report
+    * enforce rule that all Go code is correctly formatted
+    * remove codecov
+* **core**
+    * add NewPointVectorFromMat() and NewPoint2fVectorFromMat() functions
+    * Fix possible MatProfile race by ordering remove before free.
+* **cuda**
+    * add core functions for GpuMat like Cols(), Rows(), and Type()
+    * initial implementation for the Flip function
+* **docs**
+    * update ROADMAP from recent contributions
+* **examples**
+    * correct list of examples and fix comment
+* **features2d**
+    * Add NewORBWithParams
+* **tracking**
+    * change MOSSE to KCF
+* **highgui**
+    * Add function CreateTrackbarWithValue to Window type.
+* **imgcodec**
+    * optimize IMEncode avoiding multiple data copies.
+* **imgproc**
+    * Add CircleWithParams function
+    * Add DilateWithParams() function (#827)
+    * Add EllipseWithParams function
+    * Add FillPolyWithParams function
+    * Add PointPolygonTest function
+    * Add RectangleWithParams function
+* **photo**
+    * add MergeMertens, AlignMTB and Denoising function (#848)
+* **xphoto**
+    * Add Xphoto contrib (#844)
+
+0.27.0
+---
+* **all**
+    * update to OpenCV 4.5.2
+* **core**
+    * add Append() to PointsVector/PointVector
+    * add cv::RNG
+    * add implementation for Point2fVector
+    * add rand functions
+    * add test coverage for PointsVector
+    * create new PointsVector/PointVector wrappers to avoid repetitive memory copying for seeming innocent operations involving slices of image.Point
+    * test coverage for Point2f
+    * use PointVector for everything that we can to speed up pipeline when passing around Point vectors
+    * use enum instead of int for Invert Method
+* **cuda**
+    * adding HoughLinesDetector and HoughSegmentDetector
+    * adding tests for the CannyEdgeDetector
+    * some refactoring of the API
+    * adding dockerfiles for OpenCV 4.5.2 with CUDA 11.2
+    * add GaussianFilter
+    * correct signature and test for Threshold
+    * implement SobelFilter
+    * move arithm module functions into correct location
+    * rename files to get rid of so many cudas
+    * add abs function implementation
+* **dnn**
+    * increase test coverage
+* **docker**
+    * make all Dockerfiles names/tags more consistent
+* **docs**
+    * add CUDA functions that need implementation to ROADMAP
+    * remove invalid sections and add some missing functions from ROADMAP
+* **imgproc**
+    * Add FindContoursWithParams function
+    * Add ToImageYUV and ToImageYUVWithParams
+* **make**
+    * add make task to show changelog for next release
+* **wechat_qrcode**
+    * disable module in Windows due to linker error
+
+0.26.0
+---
+* **all**
+    * update to OpenCV 4.5.1
+* **core**
+    * add Matrix initializers: eye, ones, zeros (#758)
+    * add multidimensional mat creation
+    * add ndim mat constructor
+    * added accumulators
+    * added norm call with two mats (#600)
+    * keep a reference to a []byte that backs a Mat. (#755)
+    * remove guard for DataPtrUint8 since any Mat can be treated an Uint8
+    * add Mat IsContinuous() function, and ensure that any Mat data pointers used to create Go slices only apply to continuous Mats
+    * fix buffer size for Go strings for 32-bit operating systems
+* **build**
+    * bring back codecov.io
+* **calib3d**
+    * correctly close mat after test
+* **dnn**
+    * add ReadNetFromONNX and ReadNetFromONNXBytes (#760)
+    * increase test coverage
+* **docker**
+    * dockerfiles for opencv gpu builds
+* **docs**
+    * corrected links to CUDA and OpenVINO
+    * list all unimplemented functions in photo module
+    * replace GoDocs with pkg docs
+    * update ROADMAP from recent contributions
+* **imgproc**
+    * add test coverage for GetTextSizeWithBaseline()
+    * close all Mats even those based on memory slices
+    * close Mat to avoid memory leak in ToImage()
+    * refactoring of ToImage and ImageToMatXX functions
+* **openvino**
+    * fix dldt repo in makefile for openvino
+* **os**
+    * adding gcc-c++ package to rpm deps
+* **photo**
+    * add SeamlessClone function
+* **profile**
+    * add created mats in Split and ForwardLayers to profile (#780)
+
+0.25.0
+---
+* **all**
+    * update to opencv release 4.5.0
+* **build** 
+    * add file dependencies needed for DNN tests
+    * add verbose output for tests on CircleCI
+    * also run unit tests on non-free algorithms. YMMV.
+    * fix build with cuda
+    * remove Travis and switch to CircleCI using Docker based builds
+    * update CI builds to Go 1.15
+* **core**
+    * add mixChannels() method to Mat (#746)
+    * Add toGoStrings helper
+    * support ConvertToWithParams method
+* **dnn**
+    * Add NMSBoxes function (#736)
+    * Added ability to load Torch file. Tested features for extracting 128d vectors
+    * fix using wrong type for unconnectedlayertype
+    * use default ddepth for conversions to blob from image as recommended by @berak
+* **docker** 
+    * use separate dockerfile for opencv to avoid massive rebuild
+* **docs**
+    * add recent contributions to ROADMAP and also add cuda functions still in need of implementation
+    * display CircleCI badge in README
+    * minor improvements to CUDA docs in READMEs
+* **features2d**
+    * add FlannBasedMatcher
+    * add drawmatches (#720)
+    * fix memory leak in SIFT
+* **highgui**
+    * refactored ROI methods
+* **imgproc**
+    * Add option to return baseline with GetTextSizeWithBaseline
+* **objdetect** 
+    * Add QRCode DetectAndDecodeMulti
+* **videoio**
+    * Add video capture properties and set preferred api backend (#739)
+    * fix needed as discussed in golang/go issue #32479
+
+0.24.0
+---
+* **all**
+    * update Makefile and READMEChange constants and corresponding function signatures to have the correct types (#689)
+    * replace master branch terminology with release
+    * update to OpenCV 4.4.0
+* **calib3d**
+    * add FindHomography()
+    * add function EstimateAffinePartial2D()
+    * add GetAffineTransform() and GetAffineTransform2f()
+    * add UndistortPoints(), FisheyeUndistortPoints() and EstimateNewCameraMatrixForUndistortRectify()
+* **core**
+    * add MultiplyWithParams
+* **docs**
+    * add recent contributions to ROADMAP
+    * create CODE_OF_CONDUCT.md
+    * update copyright year
+* **features2d**
+    * close returned Mat from SIFT algorithm
+    * fix issue 707 with DrawKeyPoints
+    * SIFT patent now expired so is part of main OpenCV modules
+* **imgproc**
+    * change struct to remove GNU old-style field designator extension warning
+
+0.23.0
+---
+* **build**
+    * update Makefile and README
+    * update to use go1.14
+* **calib3d**
+    * add draw chessboard
+* **core**
+    * fix memory leak in Mat.Size() and Mat.Split() (#580)
+* **cuda**
+    * add build support
+    * add cuda backend/target
+    * add support for:
+        * cv::cuda::CannyEdgeDetector
+        * cv::cuda::CascadeClassifier Class
+        * cv::cuda::HOG Class
+    * remove breaking case statement
+* **dnn**
+    * avoid parallel test runs
+    * remove attempt at providing grayscale image blog conversion that uses mean adjustment
+* **docker**
+    * docker file last command change (#505)
+* **docs**
+    * add recent contributions to ROADMAP
+* **imgproc**
+    * add ErodeWithParams function
+    * add getGaussianKernel function
+    * add Go Point2f type and update GetPerspectiveTransform() (#589)
+    * add PhaseCorrelate binding (#626)
+    * added Polylines feature
+    * do not free contours data until after we have drawn the needed contours
+    * Threshold() should return a value (#620)
+* **make**
+    * added raspberry pi zero support to the makefile
+* **opencv**
+    * update to OpenCV 4.3.0
+* **openvino**
+    * add build support
+* **windows**
+    * add cmake flag for allocator stats counter type to avoid opencv issue #16398
+
 0.22.0
 ---
 * **bgsegm**
