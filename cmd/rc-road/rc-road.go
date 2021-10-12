@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/cyrilix/robocar-base/cli"
-	"github.com/cyrilix/robocar-road/part"
+	"github.com/cyrilix/robocar-road/pkg/part"
 	"go.uber.org/zap"
 	"log"
 	"os"
