@@ -3,7 +3,7 @@ package testtools
 import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 type fakeMessage struct {
@@ -50,10 +50,10 @@ func NewFakeMessage(topic string, payload []byte) mqtt.Message {
 	}
 }
 
-func NewFakeMessageFromProtobuf(topic string, msg proto.Message) mqtt.Message{
+func NewFakeMessageFromProtobuf(topic string, msg proto.Message) mqtt.Message {
 	payload, err := proto.Marshal(msg)
-	if err  != nil {
-		log.Errorf("unable to marshal protobuf message %T: %v", msg, err)
+	if err != nil {
+		zap.S().Errorf("unable to marshal protobuf message %T: %v", msg, err)
 		return nil
 	}
 	return NewFakeMessage(topic, payload)
