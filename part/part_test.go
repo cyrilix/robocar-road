@@ -35,7 +35,7 @@ func TestRoadPart_OnFrame(t *testing.T) {
 	cameraTopic := "topic/camera"
 	roadTopic := "topic/road"
 
-	rp := NewRoadPart(nil, 20, roadTopic)
+	rp := NewRoadPart(nil, 20, cameraTopic, roadTopic)
 	go func() {
 		if err := rp.Start(); err != nil {
 			t.Errorf("unable to start roadPart: %v", err)
@@ -53,7 +53,7 @@ func TestRoadPart_OnFrame(t *testing.T) {
 			name:            "image1",
 			msg:             loadFrame(t, cameraTopic, "image"),
 			expectedCntr:    []*events.Point{&events.Point{X: 0, Y: int32(45)}, &events.Point{X: 0, Y: 127}, &events.Point{X: 144, Y: 127}, &events.Point{X: 95, Y: 21}, &events.Point{X: 43, Y: 21}},
-			expectedEllipse: events.Ellipse{Center: &events.Point{X: 71, Y: 87,}, Width: 139, Height: 176, Angle: 92.66927, Confidence: 1.,},
+			expectedEllipse: events.Ellipse{Center: &events.Point{X: 71, Y: 87}, Width: 139, Height: 176, Angle: 92.66927, Confidence: 1.},
 		},
 	}
 

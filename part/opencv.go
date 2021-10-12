@@ -44,7 +44,7 @@ func NewRoadDetector() *RoadDetector {
 	}
 }
 
-func (rd *RoadDetector) DetectRoadContour(imgGray *gocv.Mat, horizonRow int) *[]image.Point {
+func (rd *RoadDetector) DetectRoadContour(imgGray *gocv.Mat, horizonRow int) *gocv.PointVector {
 
 	kernel := gocv.NewMatWithSizeFromScalar(gocv.NewScalar(1, 1, 1, 1), rd.kernelSize, rd.kernelSize, gocv.MatTypeCV8U)
 
@@ -77,34 +77,37 @@ func (rd *RoadDetector) DetectRoadContour(imgGray *gocv.Mat, horizonRow int) *[]
 	return rd.detectRoadContour(&img)
 }
 
-func (rd *RoadDetector) detectRoadContour(imgInversed *gocv.Mat) *[]image.Point {
+func (rd *RoadDetector) detectRoadContour(imgInversed *gocv.Mat) *gocv.PointVector {
 
 	var (
 		epsilon float64
-		cntr    []image.Point
+		cntr    gocv.PointVector
 	)
 
-	cntrs := gocv.FindContours(*imgInversed, gocv.RetrievalExternal, gocv.ChainApproxSimple)
+	ptsVec := gocv.FindContours(*imgInversed, gocv.RetrievalExternal, gocv.ChainApproxSimple)
+	defer ptsVec.Close()
 
-	if len(cntrs) == 0 {
-		emptyContours := make([]image.Point, 0)
+	if ptsVec.Size() == 0 {
+		emptyContours := gocv.NewPointVector()
 		return &emptyContours
-	} else if len(cntrs) == 1 {
-		epsilon = rd.approxPolyEpsilonFactor * gocv.ArcLength(cntrs[0], true)
-		cntr = cntrs[0]
+	} else if ptsVec.Size() == 1 {
+		epsilon = rd.approxPolyEpsilonFactor * gocv.ArcLength(ptsVec.At(0), true)
+		cntr = ptsVec.At(0)
 	} else {
 		// Search biggest contour
-		peris := make([]float64, len(cntrs))
+		peris := make([]float64, ptsVec.Size())
 		maxArcIdx := 0
 		maxArcValue := 0.
-		for i, c := range cntrs {
+		//for i, c := range cntrs {
+		for i := 0; i< ptsVec.Size(); i++ {
+			c := ptsVec.At(i)
 			peri := gocv.ArcLength(c, true)
 			peris[i] = peri
 			if peri > maxArcValue {
 				maxArcValue = peri
 				maxArcIdx = i
 			}
-			cntr = cntrs[maxArcIdx]
+			cntr = ptsVec.At(maxArcIdx)
 		}
 		epsilon = rd.approxPolyEpsilonFactor * peris[maxArcIdx]
 	}
@@ -114,8 +117,8 @@ func (rd *RoadDetector) detectRoadContour(imgInversed *gocv.Mat) *[]image.Point 
 
 var EllipseNotFound = events.Ellipse{Confidence: 0.}
 
-func (rd *RoadDetector) ComputeEllipsis(road *[]image.Point) *events.Ellipse {
-	if len(*road) < 5 {
+func (rd *RoadDetector) ComputeEllipsis(road *gocv.PointVector) *events.Ellipse {
+	if road.Size() < 5 {
 		return &EllipseNotFound
 	}
 

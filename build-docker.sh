@@ -126,10 +126,6 @@ image_final(){
 #buildah rmi localhost/$IMAGE_NAME
 #buildah manifest rm localhost/${IMAGE_NAME}
 
-image_build linux/amd64
-image_build linux/arm64
-image_build linux/arm/v7
-
 image_build
 
 # push image

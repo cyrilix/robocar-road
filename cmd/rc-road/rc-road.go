@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	DefaultClientId    = "robocar-road"
-	DefaultHorizon = 20
+	DefaultClientId = "robocar-road"
+	DefaultHorizon  = 20
 )
 
 func main() {

@@ -23,7 +23,6 @@ func NewRoadPart(client mqtt.Client, horizon int, cameraTopic, roadTopic string)
 	return &RoadPart{
 		client:       client,
 		frameChan:    make(chan frameToProcess),
-		readyForNext: make(chan interface{}, 1),
 		cancel:       make(chan interface{}),
 		roadDetector: NewRoadDetector(),
 		horizon:      horizon,
@@ -35,7 +34,6 @@ func NewRoadPart(client mqtt.Client, horizon int, cameraTopic, roadTopic string)
 func (r *RoadPart) Start() error {
 	registerCallBacks(r)
 
-	ready := true
 	var frame = frameToProcess{}
 	defer func() {
 		if err := frame.Close(); err != nil {
@@ -52,13 +50,8 @@ func (r *RoadPart) Start() error {
 			if err := oldFrame.Close(); err != nil {
 				log.Errorf("unable to close msg: %v", err)
 			}
-			if ready {
-				log.Debug("process msg")
-				go r.processFrame(&frame)
-				ready = false
-			}
-		case <-r.readyForNext:
-			ready = true
+			log.Debug("process msg")
+			go r.processFrame(&frame)
 		case <-r.cancel:
 			log.Infof("Stop service")
 			return nil
@@ -73,15 +66,15 @@ var registerCallBacks = func(r *RoadPart) {
 	}
 }
 
-func (o *RoadPart) Stop() {
+func (r *RoadPart) Stop() {
 	defer func() {
-		if err := o.roadDetector.Close(); err != nil {
+		if err := r.roadDetector.Close(); err != nil {
 			log.Errorf("unable to close roadDetector: %v", err)
 		}
 	}()
-	close(o.readyForNext)
-	close(o.cancel)
-	service.StopService("road", o.client, o.roadTopic)
+	close(r.readyForNext)
+	close(r.cancel)
+	service.StopService("road", r.client, r.roadTopic)
 }
 
 func (r *RoadPart) OnFrame(_ mqtt.Client, msg mqtt.Message) {
@@ -120,10 +113,13 @@ func (r *RoadPart) processFrame(frame *frameToProcess) {
 	gocv.CvtColor(img, &imgGray, gocv.ColorRGBToGray)
 
 	road := r.roadDetector.DetectRoadContour(&imgGray, r.horizon)
+	defer road.Close()
+
 	ellipse := r.roadDetector.ComputeEllipsis(road)
 
-	cntr := make([]*events.Point, 0, len(*road))
-	for _, pt := range *road {
+	cntr := make([]*events.Point, 0, road.Size())
+	for i:=0;i< road.Size(); i++ {
+		pt := road.At(i)
 		cntr = append(cntr, &events.Point{X: int32(pt.X), Y: int32(pt.Y)})
 	}
 
