@@ -3,7 +3,7 @@ package part
 import (
 	"fmt"
 	"github.com/cyrilix/robocar-protobuf/go/events"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"gocv.io/x/gocv"
 	"image"
 	"image/color"
@@ -82,7 +82,7 @@ func TestRoadDetection_DetectRoadContour(t *testing.T) {
 		imgGray := toGray(*c.img)
 		contours := rd.DetectRoadContour(imgGray, c.horizon)
 
-		log.Infof("[%v] contour: %v", c.name, *contours)
+		zap.S().Infof("[%v] contour: %v", c.name, *contours)
 		expected := gocv.NewPointVectorFromPoints(c.expectedContour)
 
 		if contours.Size() != expected.Size() {

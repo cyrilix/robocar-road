@@ -7,7 +7,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -91,7 +91,7 @@ func frameRefFromPayload(payload []byte) *events.FrameRef {
 	var msg events.FrameMessage
 	err := proto.Unmarshal(payload, &msg)
 	if err != nil {
-		log.Errorf("unable to unmarchal %T msg: %v", msg, err)
+		zap.S().Errorf("unable to unmarshal %T msg: %v", msg, err)
 	}
 	return msg.GetId()
 }

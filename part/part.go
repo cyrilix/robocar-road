@@ -5,8 +5,9 @@ import (
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"gocv.io/x/gocv"
+	"log"
 )
 
 type RoadPart struct {
@@ -32,6 +33,7 @@ func NewRoadPart(client mqtt.Client, horizon int, cameraTopic, roadTopic string)
 }
 
 func (r *RoadPart) Start() error {
+	log := zap.S()
 	registerCallBacks(r)
 
 	var frame = frameToProcess{}
@@ -69,7 +71,7 @@ var registerCallBacks = func(r *RoadPart) {
 func (r *RoadPart) Stop() {
 	defer func() {
 		if err := r.roadDetector.Close(); err != nil {
-			log.Errorf("unable to close roadDetector: %v", err)
+			zap.S().Errorf("unable to close roadDetector: %v", err)
 		}
 	}()
 	close(r.readyForNext)
@@ -81,13 +83,13 @@ func (r *RoadPart) OnFrame(_ mqtt.Client, msg mqtt.Message) {
 	var frameMsg events.FrameMessage
 	err := proto.Unmarshal(msg.Payload(), &frameMsg)
 	if err != nil {
-		log.Errorf("unable to unmarshal %T message: %v", frameMsg, err)
+		zap.S().Errorf("unable to unmarshal %T message: %v", frameMsg, err)
 		return
 	}
 
 	img, err := gocv.IMDecode(frameMsg.GetFrame(), gocv.IMReadUnchanged)
 	if err != nil {
-		log.Errorf("unable to decode image: %v", err)
+		zap.S().Errorf("unable to decode image: %v", err)
 		return
 	}
 	frame := frameToProcess{
@@ -107,7 +109,7 @@ func (r *RoadPart) processFrame(frame *frameToProcess) {
 	imgGray := gocv.NewMatWithSize(img.Rows(), img.Cols(), gocv.MatTypeCV8UC1)
 	defer func() {
 		if err := imgGray.Close(); err != nil {
-			log.Warnf("unable to close Mat resource: %v", err)
+			zap.S().Warnf("unable to close Mat resource: %v", err)
 		}
 	}()
 	gocv.CvtColor(img, &imgGray, gocv.ColorRGBToGray)
@@ -131,7 +133,7 @@ func (r *RoadPart) processFrame(frame *frameToProcess) {
 
 	payload, err := proto.Marshal(&msg)
 	if err != nil {
-		log.Errorf("unable to marshal %T to protobuf: %err", msg, err)
+		zap.S().Errorf("unable to marshal %T to protobuf: %err", msg, err)
 		return
 	}
 	publish(r.client, r.roadTopic, &payload)

@@ -2,7 +2,7 @@ package part
 
 import (
 	"github.com/cyrilix/robocar-protobuf/go/events"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"gocv.io/x/gocv"
 	"image"
 	"image/color"
@@ -23,11 +23,11 @@ func (rd *RoadDetector) Close() error {
 	var err error
 	err = nil
 	if err1 := rd.thresholdLowerBound.Close(); err1 != nil {
-		log.Errorf("unable to close thresholdLowerBound resource: %v", err1)
+		zap.S().Errorf("unable to close thresholdLowerBound resource: %v", err1)
 		err = err1
 	}
 	if err2 := rd.thresholdUpperBound.Close(); err2 != nil {
-		log.Errorf("unable to close thresholdUpperBound resource: %v", err2)
+		zap.S().Errorf("unable to close thresholdUpperBound resource: %v", err2)
 		err = err2
 	}
 	return err
@@ -51,7 +51,7 @@ func (rd *RoadDetector) DetectRoadContour(imgGray *gocv.Mat, horizonRow int) *go
 	img := imgGray.Clone()
 	defer func() {
 		if err := img.Close(); err != nil {
-			log.Warnf("unable to close mat resource: %v", err)
+			zap.S().Warnf("unable to close mat resource: %v", err)
 		}
 	}()
 
@@ -125,7 +125,7 @@ func (rd *RoadDetector) ComputeEllipsis(road *gocv.PointVector) *events.Ellipse 
 	rotatedRect := gocv.FitEllipse(*road)
 
 	trust := rd.computeTrustFromCenter(&rotatedRect.Center)
-	log.Debugf("Trust: %v", trust)
+	zap.S().Debugf("Trust: %v", trust)
 
 	return &events.Ellipse{
 		Center: &events.Point{

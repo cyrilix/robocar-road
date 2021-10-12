@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/cyrilix/robocar-base/cli"
 	"github.com/cyrilix/robocar-road/part"
+	"go.uber.org/zap"
 	"log"
 	"os"
 )
@@ -17,6 +18,7 @@ func main() {
 	var mqttBroker, username, password, clientId string
 	var cameraTopic, roadTopic string
 	var horizon int
+	var debug bool
 
 	err := cli.SetIntDefaultValueFromEnv(&horizon, "HORIZON", DefaultHorizon)
 	if err != nil {
@@ -31,6 +33,7 @@ func main() {
 	flag.StringVar(&roadTopic, "mqtt-topic-road", os.Getenv("MQTT_TOPIC_ROAD"), "Mqtt topic to publish road detection result, use MQTT_TOPIC_ROAD if args not set")
 	flag.StringVar(&cameraTopic, "mqtt-topic-camera", os.Getenv("MQTT_TOPIC_CAMERA"), "Mqtt topic that contains camera frame values, use MQTT_TOPIC_CAMERA if args not set")
 	flag.IntVar(&horizon, "horizon", horizon, "Limit horizon in pixels from top, use HORIZON if args not set")
+	flag.BoolVar(&debug, "debug", false, "Display raw value to debug")
 
 	flag.Parse()
 	if len(os.Args) <= 1 {
@@ -38,9 +41,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	config := zap.NewDevelopmentConfig()
+	if debug {
+		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	} else {
+		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	}
+	lgr, err := config.Build()
+	if err != nil {
+		log.Fatalf("unable to init logger: %v", err)
+	}
+	defer func() {
+		if err := lgr.Sync(); err != nil {
+			log.Printf("unable to Sync logger: %v\n", err)
+		}
+	}()
+	zap.ReplaceGlobals(lgr)
+
 	client, err := cli.Connect(mqttBroker, username, password, clientId)
 	if err != nil {
-		log.Fatalf("unable to connect to mqtt bus: %v", err)
+		zap.S().Fatalf("unable to connect to mqtt bus: %v", err)
 	}
 	defer client.Disconnect(50)
 
@@ -51,6 +71,6 @@ func main() {
 
 	err = p.Start()
 	if err != nil {
-		log.Fatalf("unable to start service: %v", err)
+		zap.S().Fatalf("unable to start service: %v", err)
 	}
 }
