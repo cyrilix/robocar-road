@@ -18,7 +18,6 @@ func main() {
 	var mqttBroker, username, password, clientId string
 	var cameraTopic, roadTopic string
 	var horizon int
-	var debug bool
 
 	err := cli.SetIntDefaultValueFromEnv(&horizon, "HORIZON", DefaultHorizon)
 	if err != nil {
@@ -33,20 +32,17 @@ func main() {
 	flag.StringVar(&roadTopic, "mqtt-topic-road", os.Getenv("MQTT_TOPIC_ROAD"), "Mqtt topic to publish road detection result, use MQTT_TOPIC_ROAD if args not set")
 	flag.StringVar(&cameraTopic, "mqtt-topic-camera", os.Getenv("MQTT_TOPIC_CAMERA"), "Mqtt topic that contains camera frame values, use MQTT_TOPIC_CAMERA if args not set")
 	flag.IntVar(&horizon, "horizon", horizon, "Limit horizon in pixels from top, use HORIZON if args not set")
-	flag.BoolVar(&debug, "debug", false, "Display raw value to debug")
 
+	logLevel := zap.LevelFlag("log", zap.InfoLevel, "log level")
 	flag.Parse()
+
 	if len(os.Args) <= 1 {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
 	config := zap.NewDevelopmentConfig()
-	if debug {
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-	} else {
-		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	}
+	config.Level = zap.NewAtomicLevelAt(*logLevel)
 	lgr, err := config.Build()
 	if err != nil {
 		log.Fatalf("unable to init logger: %v", err)
