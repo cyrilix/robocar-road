@@ -4,9 +4,9 @@ import (
 	"github.com/cyrilix/robocar-base/service"
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 	"gocv.io/x/gocv"
+	"google.golang.org/protobuf/proto"
 	"log"
 )
 
@@ -120,7 +120,7 @@ func (r *RoadPart) processFrame(frame *frameToProcess) {
 	ellipse := r.roadDetector.ComputeEllipsis(road)
 
 	cntr := make([]*events.Point, 0, road.Size())
-	for i:=0;i< road.Size(); i++ {
+	for i := 0; i < road.Size(); i++ {
 		pt := road.At(i)
 		cntr = append(cntr, &events.Point{X: int32(pt.X), Y: int32(pt.Y)})
 	}
