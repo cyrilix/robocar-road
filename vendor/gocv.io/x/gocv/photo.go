@@ -5,6 +5,7 @@ package gocv
 #include "photo.h"
 */
 import "C"
+
 import (
 	"image"
 	"unsafe"
@@ -224,4 +225,92 @@ func (b *AlignMTB) Process(src []Mat, dst *[]Mat) {
 		*dst = append(*dst, tempdst)
 	}
 	return
+}
+
+// FastNlMeansDenoising performs image denoising using Non-local Means Denoising algorithm
+// http://www.ipol.im/pub/algo/bcm_non_local_means_denoising/
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/d1/d79/group__photo__denoise.html#ga4c6b0031f56ea3f98f768881279ffe93
+//
+func FastNlMeansDenoising(src Mat, dst *Mat) {
+	C.FastNlMeansDenoising(src.p, dst.p)
+}
+
+// FastNlMeansDenoisingWithParams performs image denoising using Non-local Means Denoising algorithm
+// http://www.ipol.im/pub/algo/bcm_non_local_means_denoising/
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/d1/d79/group__photo__denoise.html#ga4c6b0031f56ea3f98f768881279ffe93
+//
+func FastNlMeansDenoisingWithParams(src Mat, dst *Mat, h float32, templateWindowSize int, searchWindowSize int) {
+	C.FastNlMeansDenoisingWithParams(src.p, dst.p, C.float(h), C.int(templateWindowSize), C.int(searchWindowSize))
+}
+
+// FastNlMeansDenoisingColored is a modification of fastNlMeansDenoising function for colored images.
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/d1/d79/group__photo__denoise.html#ga21abc1c8b0e15f78cd3eff672cb6c476
+//
+func FastNlMeansDenoisingColored(src Mat, dst *Mat) {
+	C.FastNlMeansDenoisingColored(src.p, dst.p)
+}
+
+// FastNlMeansDenoisingColoredWithParams is a modification of fastNlMeansDenoising function for colored images.
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/d1/d79/group__photo__denoise.html#ga21abc1c8b0e15f78cd3eff672cb6c476
+//
+func FastNlMeansDenoisingColoredWithParams(src Mat, dst *Mat, h float32, hColor float32, templateWindowSize int, searchWindowSize int) {
+	C.FastNlMeansDenoisingColoredWithParams(src.p, dst.p, C.float(h), C.float(hColor), C.int(templateWindowSize), C.int(searchWindowSize))
+}
+
+// DetailEnhance filter enhances the details of a particular image
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/df/dac/group__photo__render.html#gae5930dd822c713b36f8529b21ddebd0c
+//
+func DetailEnhance(src Mat, dst *Mat, sigma_s, sigma_r float32) {
+	C.DetailEnhance(src.p, dst.p, C.float(sigma_s), C.float(sigma_r))
+}
+
+type EdgeFilter int
+
+const (
+	// RecursFilter Recursive Filtering.
+	RecursFilter EdgeFilter = 1
+
+	// NormconvFilter Normalized Convolution Filtering.
+	NormconvFilter = 2
+)
+
+// EdgePreservingFilter filtering is the fundamental operation in image and video processing.
+// Edge-preserving smoothing filters are used in many different applications.
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/df/dac/group__photo__render.html#gafaee2977597029bc8e35da6e67bd31f7
+//
+func EdgePreservingFilter(src Mat, dst *Mat, filter EdgeFilter, sigma_s, sigma_r float32) {
+	C.EdgePreservingFilter(src.p, dst.p, C.int(filter), C.float(sigma_s), C.float(sigma_r))
+}
+
+// PencilSketch pencil-like non-photorealistic line drawing.
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/df/dac/group__photo__render.html#gae5930dd822c713b36f8529b21ddebd0c
+//
+func PencilSketch(src Mat, dst1, dst2 *Mat, sigma_s, sigma_r, shade_factor float32) {
+	C.PencilSketch(src.p, dst1.p, dst2.p, C.float(sigma_s), C.float(sigma_r), C.float(shade_factor))
+}
+
+// Stylization aims to produce digital imagery with a wide variety of effects
+// not focused on photorealism. Edge-aware filters are ideal for stylization,
+// as they can abstract regions of low contrast while preserving, or enhancing,
+// high-contrast features.
+//
+// For further details, please see:
+// https://docs.opencv.org/4.x/df/dac/group__photo__render.html#gacb0f7324017df153d7b5d095aed53206
+//
+func Stylization(src Mat, dst *Mat, sigma_s, sigma_r float32) {
+	C.Stylization(src.p, dst.p, C.float(sigma_s), C.float(sigma_r))
 }

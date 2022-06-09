@@ -84,3 +84,35 @@ void AlignMTB_Process(AlignMTB b, struct Mats src, struct Mats *dst) {
   }
   dst->length = (int)dstMats.size();
 }
+
+void FastNlMeansDenoising(Mat src, Mat dst) {
+    cv::fastNlMeansDenoising(*src, *dst);
+}
+
+void FastNlMeansDenoisingWithParams(Mat src, Mat dst, float h, int templateWindowSize, int searchWindowSize) {
+    cv::fastNlMeansDenoising(*src, *dst, h, templateWindowSize, searchWindowSize);
+}
+
+void FastNlMeansDenoisingColored(Mat src, Mat dst) {
+    cv::fastNlMeansDenoisingColored(*src, *dst);
+}
+
+void FastNlMeansDenoisingColoredWithParams(Mat src, Mat dst, float h, float hColor, int templateWindowSize, int searchWindowSize) {
+    cv::fastNlMeansDenoisingColored(*src, *dst, h, hColor, templateWindowSize, searchWindowSize);
+}
+
+void EdgePreservingFilter(Mat src, Mat dst, int filter, float sigma_s, float sigma_r) {
+    cv::edgePreservingFilter(*src, *dst, filter, sigma_s, sigma_r);
+}
+
+void DetailEnhance(Mat src, Mat dst, float sigma_s, float sigma_r) {
+    cv::detailEnhance(*src, *dst, sigma_s, sigma_r);
+}
+
+void PencilSketch(Mat src, Mat dst1, Mat dst2, float sigma_s, float sigma_r, float shade_factor) {
+    cv::pencilSketch(*src, *dst1, *dst2, sigma_s, sigma_r, shade_factor);
+}
+
+void Stylization(Mat src, Mat dst, float sigma_s, float sigma_r) {
+    cv::stylization(*src, *dst, sigma_s, sigma_r);
+}
